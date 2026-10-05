@@ -69,3 +69,24 @@ def test_local_checkpoint_interruption_resumes_signed_intent(tmp_path, monkeypat
     resume_snapshot(snapshot, root)
     replicate_snapshot(snapshot, a, b)
     audit_snapshots(root, a, b)
+
+
+def test_checkpoint_partial_is_reported_without_claiming_clean_integrity(tmp_path):
+    from zugpferd_archiv.core import ArchiveService
+    from zugpferd_archiv.media import register
+    from zugpferd_archiv.register import Register
+
+    root, a, b = setup(tmp_path)
+    archive = ArchiveService(root)
+    archive.setup()
+    marker = register(a, "A")
+    register(b, "B", marker.archive_id)
+    archive.configure(a, b)
+    Register(root, actor="SID").start_series(2026, "", 0, "Baseline")
+    assert archive.backup(a, b).success
+    snapshot = next((a / MEDIA_FOLDER).iterdir())
+    (snapshot / "Dateien/interrupted.partial-test").write_bytes(b"unfinished")
+    result = archive.check(a, b)
+    assert not result.success
+    assert any(item["kind"] == "interrupted" for item in result.exceptions)
+    assert not any("TypeError" in item["detail"] for item in result.exceptions)

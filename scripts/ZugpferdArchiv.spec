@@ -13,7 +13,7 @@ for dependency in Path(get_module_file_attribute('saxonche')).parent.glob('msvcp
 for module in ('lxml', 'pypdf', 'cryptography'):
     datas += collect_data_files(module)
 datas += [(str(project / 'src/zugpferd_archiv/validation'), 'zugpferd_archiv/validation')]
-hiddenimports += ['win32api', 'win32con', 'win32file', 'win32pipe', 'win32security',
+hiddenimports += ['win32api', 'win32con', 'win32file', 'win32pipe', 'win32security', 'win32timezone',
                   'win32service', 'win32serviceutil', 'servicemanager', 'pywintypes',
                   'PySide6.QtPdf', 'PySide6.QtPdfWidgets', 'PySide6.QtPrintSupport']
 a = Analysis([str(project / 'scripts/windows_entry.py')], pathex=[str(project / 'src')], binaries=binaries,

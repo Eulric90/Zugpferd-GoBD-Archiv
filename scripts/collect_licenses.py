@@ -15,7 +15,7 @@ def main():
         inventory[name] = distribution.version
         for relative in distribution.files or []:
             if any(
-                term in relative.name.lower()
+                term in str(relative).lower()
                 for term in ("license", "copying", "notice")
             ):
                 source = distribution.locate_file(relative)

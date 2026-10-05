@@ -524,7 +524,7 @@ class ArchiveService:
 
             Register(self.root).records()
             for warning in audit_snapshots(self.root, a, b):
-                report.issue("interrupted_copy", warning)
+                report.issue("interrupted", warning["path"], warning["detail"])
         self._pair(a, b, report)
         return ra, rb
 

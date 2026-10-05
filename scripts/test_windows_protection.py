@@ -145,7 +145,36 @@ def main():
                     break
                 time.sleep(0.1)
             else:
-                raise RuntimeError("Frozen service failed to enter RUNNING")
+                import win32evtlog
+
+                diagnostics = []
+                for log_name in ("Application", "System"):
+                    log = win32evtlog.OpenEventLog(None, log_name)
+                    try:
+                        events = win32evtlog.ReadEventLog(
+                            log,
+                            win32evtlog.EVENTLOG_BACKWARDS_READ
+                            | win32evtlog.EVENTLOG_SEQUENTIAL_READ,
+                            0,
+                        )
+                        for event in events[:30]:
+                            if any(
+                                word in event.SourceName.casefold()
+                                for word in ("python", "zugpferd", "service control")
+                            ):
+                                diagnostics.append(
+                                    dict(
+                                        source=event.SourceName,
+                                        id=event.EventID,
+                                        details=event.StringInserts,
+                                    )
+                                )
+                    finally:
+                        win32evtlog.CloseEventLog(log)
+                print(json.dumps(diagnostics, ensure_ascii=True))
+                raise RuntimeError(
+                    f"Frozen service failed to enter RUNNING: {win32service.QueryServiceStatus(service_handle)}"
+                )
             encrypted = request(
                 dict(operation="export_key", password="CI-secure-recovery-password")
             )

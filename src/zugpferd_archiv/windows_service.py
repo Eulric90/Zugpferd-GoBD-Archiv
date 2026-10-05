@@ -42,8 +42,16 @@ def run():
                 pass
 
         def SvcDoRun(self):
-            config = json.loads(configuration_path().read_text(encoding="utf-8-sig"))
-            serve(config, self.stopped.is_set)
+            try:
+                config = json.loads(
+                    configuration_path().read_text(encoding="utf-8-sig")
+                )
+                serve(config, self.stopped.is_set)
+            except Exception:
+                import traceback
+
+                servicemanager.LogErrorMsg(traceback.format_exc())
+                raise
 
     servicemanager.Initialize()
     servicemanager.PrepareToHostSingle(WriterService)
@@ -100,6 +108,15 @@ def provision(
                 root.parent / ("." + root.name + "-Schluessel") / "signing-key.pem"
             )
             storage.verified_copy(old_key, new_key, storage.sha256(old_key))
+        for record in old.records(a):
+            migrated = storage.child(root, record["source_relative"])
+            if not migrated.is_file() or storage.sha256(migrated) != record["sha256"]:
+                raise ValueError(
+                    "Migration blockiert: Original widerspricht zuvor geprüfter A/B-Sicherung"
+                )
+        from .snapshots import audit_snapshots
+
+        audit_snapshots(root, a, b)
     archive = ArchiveService(root)
     archive.setup()
     if a and b:
@@ -111,15 +128,19 @@ def provision(
                 register(path, role, archive_id)
         archive.configure(a, b)
         if os.name == "nt":
-            storage.write_new(
-                root / "Archivverwaltung/Konfiguration/Medienpfade.json",
-                storage.canonical(
-                    {
-                        role: medium_subfolder(path)
-                        for role, path in (("A", a), ("B", b))
-                    }
-                ),
+            hints_path = root / "Archivverwaltung/Konfiguration/Medienpfade.json"
+            hints_content = storage.canonical(
+                {role: medium_subfolder(path) for role, path in (("A", a), ("B", b))}
             )
+            if hints_path.exists():
+                if json.loads(hints_path.read_text(encoding="utf-8")) != json.loads(
+                    hints_content
+                ):
+                    raise ValueError(
+                        "Bestehende Medienpfade widersprechen Migration; explizite Admin-Prüfung nötig"
+                    )
+            else:
+                storage.write_new(hints_path, hints_content)
     storage.write_new(
         root / ".protected-service.json",
         storage.canonical(dict(service=service.SERVICE_NAME, root=str(root))),
