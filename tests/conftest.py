@@ -7,5 +7,8 @@ from zugpferd_archiv import media
 @pytest.fixture(autouse=True)
 def logical_volumes(monkeypatch):
     monkeypatch.setattr(
+        media, "physical_device", lambda root: "test-disk:" + str(root.resolve())
+    )
+    monkeypatch.setattr(
         media, "volume_id", lambda root: "test-volume:" + str(root.resolve())
     )

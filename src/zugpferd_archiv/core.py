@@ -103,6 +103,11 @@ class ArchiveService:
                 raise ArchiveError(
                     "Arbeitsablage darf nicht auf einem Archivmedium liegen"
                 )
+            root_device = media.physical_device(root)
+            if root_device is not None and root_device == media.physical_device(target):
+                raise ArchiveError(
+                    "Arbeitsablage und USB-Archiv liegen auf demselben physischen Datenträger"
+                )
 
     def _pair(self, a: Path, b: Path, report: Report) -> tuple[Medium, Medium]:
         Journal(

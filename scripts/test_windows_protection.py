@@ -48,6 +48,36 @@ def acl(path, service_sid, operator_sid=None):
     )
 
 
+def service_diagnostics():
+    import win32evtlog
+
+    diagnostics = []
+    for log_name in ("Application", "System"):
+        log = win32evtlog.OpenEventLog(None, log_name)
+        try:
+            events = win32evtlog.ReadEventLog(
+                log,
+                win32evtlog.EVENTLOG_BACKWARDS_READ
+                | win32evtlog.EVENTLOG_SEQUENTIAL_READ,
+                0,
+            )
+            for event in events[:30]:
+                if any(
+                    word in event.SourceName.casefold()
+                    for word in ("python", "zugpferd", "service control")
+                ):
+                    diagnostics.append(
+                        dict(
+                            source=event.SourceName,
+                            id=event.EventID,
+                            details=event.StringInserts,
+                        )
+                    )
+        finally:
+            win32evtlog.CloseEventLog(log)
+    print(json.dumps(diagnostics, ensure_ascii=True))
+
+
 def main():
     if os.name != "nt":
         raise RuntimeError("Windows required")
@@ -147,33 +177,7 @@ def main():
                     break
                 time.sleep(0.1)
             else:
-                import win32evtlog
-
-                diagnostics = []
-                for log_name in ("Application", "System"):
-                    log = win32evtlog.OpenEventLog(None, log_name)
-                    try:
-                        events = win32evtlog.ReadEventLog(
-                            log,
-                            win32evtlog.EVENTLOG_BACKWARDS_READ
-                            | win32evtlog.EVENTLOG_SEQUENTIAL_READ,
-                            0,
-                        )
-                        for event in events[:30]:
-                            if any(
-                                word in event.SourceName.casefold()
-                                for word in ("python", "zugpferd", "service control")
-                            ):
-                                diagnostics.append(
-                                    dict(
-                                        source=event.SourceName,
-                                        id=event.EventID,
-                                        details=event.StringInserts,
-                                    )
-                                )
-                    finally:
-                        win32evtlog.CloseEventLog(log)
-                print(json.dumps(diagnostics, ensure_ascii=True))
+                service_diagnostics()
                 raise RuntimeError(
                     f"Frozen service failed to enter RUNNING: {win32service.QueryServiceStatus(service_handle)}"
                 )
@@ -260,10 +264,14 @@ def main():
                 ):
                     break
                 time.sleep(0.1)
+            else:
+                raise RuntimeError("Frozen service failed to stop cleanly")
             print(
                 "Frozen SCM service: authenticated SID, durable numbering, encrypted key export and real standard-user NTFS write/delete denial passed"
             )
     finally:
+        if sys.exc_info()[0] is not None:
+            service_diagnostics()
         if service_handle:
             try:
                 win32service.ControlService(

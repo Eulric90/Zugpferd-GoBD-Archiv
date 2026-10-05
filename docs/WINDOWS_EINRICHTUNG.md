@@ -28,6 +28,8 @@ ein und schützt Archiv, Konfiguration und getrennten Schlüsselordner mit ACLs.
 Bediener erhalten nur Leserechte auf übernommene Archivdaten. Bei NTFS-Unterordnern
 der Sticks werden die Archivordner ebenfalls geschützt. Dateien/Eigentümerrechte
 werden sichtbar auf Administrator/Dienst umgestellt; Belegbytes bleiben unverändert.
+A/B müssen verschiedene physische Datenträger sein; zwei Partitionen desselben
+Sticks werden abgelehnt. Gerätekennungen bleiben unabhängig vom Laufwerksbuchstaben.
 Andere Rechner/Administratoren können normale USB-Sticks weiterhin verändern.
 
 Der Container (z.B. `C:\GoBD`) muss ausschließlich das Archiv und dessen Schlüsselordner

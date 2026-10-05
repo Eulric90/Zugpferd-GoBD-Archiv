@@ -212,11 +212,23 @@ class Dispatcher:
 def request(payload: dict):
     import win32file
     import win32pipe
+    import pywintypes
+    import time
 
     raw = storage.canonical(payload)
     if len(raw) > MAX_REQUEST:
         raise ArchiveError("Dienstanfrage zu groß")
-    win32pipe.WaitNamedPipe(PIPE, 5000)
+    deadline = time.monotonic() + 5
+    while True:
+        try:
+            win32pipe.WaitNamedPipe(
+                PIPE, max(1, int((deadline - time.monotonic()) * 1000))
+            )
+            break
+        except pywintypes.error as exc:
+            if exc.winerror != 2 or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
     handle = win32file.CreateFile(PIPE, 0xC0000000, 0, None, 3, 0, None)
     try:
         import ctypes
@@ -472,7 +484,13 @@ def serve(config: dict, stop=None):
     )
     while stop is None or not stop():
         try:
-            win32pipe.ConnectNamedPipe(pipe, None)
+            try:
+                win32pipe.ConnectNamedPipe(pipe, None)
+            except pywintypes.error as exc:
+                if (
+                    exc.winerror != 535
+                ):  # client connected between creation/disconnect and this call
+                    raise
             if stop and stop():
                 break
             raw = win32file.ReadFile(pipe, MAX_REQUEST)[1]

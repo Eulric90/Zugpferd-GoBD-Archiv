@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -94,6 +95,30 @@ def read_marker(root: Path) -> Medium:
         raise ArchiveError(f"Ungültige/fehlende Medienkennung: {root}: {exc}") from exc
 
 
+def physical_device(root: Path) -> str | None:
+    """Compare current physical disks without persisting reboot-sensitive disk numbers."""
+    if os.name != "nt":
+        return None
+    import struct
+    import win32file
+    import pywintypes
+
+    if not re.fullmatch(r"[A-Za-z]:\\", root.anchor):
+        raise ArchiveError("Lokaler Datenträger erforderlich")
+    try:
+        handle = win32file.CreateFile(
+            "\\\\.\\" + root.anchor[:2], 0, 3, None, 3, 0, None
+        )
+        try:
+            raw = win32file.DeviceIoControl(handle, 0x002D1080, None, 12)
+            device_type, device_number, _partition = struct.unpack("<III", raw)
+            return f"{device_type}:{device_number}"
+        finally:
+            handle.Close()
+    except (pywintypes.error, ValueError, struct.error) as exc:
+        raise ArchiveError("Physischer Datenträger nicht sicher bestimmbar") from exc
+
+
 def register(root: Path, role: str, archive_id: str | None = None) -> Medium:
     root = safe_path(root)
     if not root.is_dir() or role not in ("A", "B"):
@@ -154,4 +179,7 @@ def validate_pair(
         a.resolve()
     ):
         raise ArchiveError("Verschachtelte Medien sind unzulässig")
+    device_a, device_b = physical_device(a), physical_device(b)
+    if device_a is not None and device_a == device_b:
+        raise ArchiveError("A/B liegen auf demselben physischen Datenträger")
     return ma, mb

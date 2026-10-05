@@ -10,6 +10,7 @@ from zugpferd_archiv.storage import publish_new
 def test_real_windows_discovery_and_volume_probe(monkeypatch, tmp_path):
     monkeypatch.undo()
     identity = media.volume_id(tmp_path)
+    assert media.physical_device(tmp_path)
     assert identity and ":" in identity
     assert any(drive.root.anchor == tmp_path.anchor for drive in media.discover())
     a, b = tmp_path / "A", tmp_path / "B"
