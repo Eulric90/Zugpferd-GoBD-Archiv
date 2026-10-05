@@ -87,36 +87,45 @@ def provision(
             raise ValueError(
                 "Migration blockiert: bestehende A/B-Sicherung nicht erfolgreich"
             )
-        for source in migration.rglob("*"):
-            storage.safe_path(source)
-            if source.is_file():
-                relative = source.relative_to(migration).as_posix()
-                if relative == ".protected-service.json":
-                    relative = "Archivverwaltung/Migration/alter-dienstmarker.json"
-                if ".partial-" in relative or source.name == ".zugpferd-operation.lock":
-                    raise ValueError("Migration enthält ungeklärte Dateien")
-                storage.verified_copy(
-                    source, storage.child(root, relative), storage.sha256(source)
-                )
-        old_key = (
-            migration.parent
-            / ("." + migration.name + "-Schluessel")
-            / "signing-key.pem"
-        )
-        if old_key.is_file():
-            new_key = (
-                root.parent / ("." + root.name + "-Schluessel") / "signing-key.pem"
+        with storage.exclusive_lock(migration):
+            for source in migration.rglob("*"):
+                storage.safe_path(source)
+                if source.is_file():
+                    relative = source.relative_to(migration).as_posix()
+                    if relative == ".protected-service.json":
+                        relative = "Archivverwaltung/Migration/alter-dienstmarker.json"
+                    if source == migration / ".zugpferd-operation.lock":
+                        continue
+                    if (
+                        ".partial-" in relative
+                        or source.name == ".zugpferd-operation.lock"
+                    ):
+                        raise ValueError("Migration enthält ungeklärte Dateien")
+                    storage.verified_copy(
+                        source, storage.child(root, relative), storage.sha256(source)
+                    )
+            old_key = (
+                migration.parent
+                / ("." + migration.name + "-Schluessel")
+                / "signing-key.pem"
             )
-            storage.verified_copy(old_key, new_key, storage.sha256(old_key))
-        for record in old.records(a):
-            migrated = storage.child(root, record["source_relative"])
-            if not migrated.is_file() or storage.sha256(migrated) != record["sha256"]:
-                raise ValueError(
-                    "Migration blockiert: Original widerspricht zuvor geprüfter A/B-Sicherung"
+            if old_key.is_file():
+                new_key = (
+                    root.parent / ("." + root.name + "-Schluessel") / "signing-key.pem"
                 )
-        from .snapshots import audit_snapshots
+                storage.verified_copy(old_key, new_key, storage.sha256(old_key))
+            for record in old.records(a):
+                migrated = storage.child(root, record["source_relative"])
+                if (
+                    not migrated.is_file()
+                    or storage.sha256(migrated) != record["sha256"]
+                ):
+                    raise ValueError(
+                        "Migration blockiert: Original widerspricht zuvor geprüfter A/B-Sicherung"
+                    )
+            from .snapshots import audit_snapshots
 
-        audit_snapshots(root, a, b)
+            audit_snapshots(root, a, b)
     archive = ArchiveService(root)
     archive.setup()
     if a and b:

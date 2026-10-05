@@ -24,7 +24,7 @@ def validate_acl(
         if (
             kind == 0
             and sid not in trusted
-            and mask & (0x10000000 | 0x40 if parent_only else WRITE_MASK)
+            and mask & (0x10000000 | 0x000D0040 if parent_only else WRITE_MASK)
         ):
             raise ArchiveError(
                 "NTFS-Rechte erlauben ungeschützte Änderung/Löschung; Admin-Abnahme erforderlich"

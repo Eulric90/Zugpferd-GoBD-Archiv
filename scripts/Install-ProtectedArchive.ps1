@@ -21,8 +21,20 @@ if (Test-Path $container) {
 }
 $volume = Get-Volume -DriveLetter ([IO.Path]::GetPathRoot($rootPath).Substring(0,1))
 if ($volume.FileSystem -ne 'NTFS') { throw 'Lokales Dienstarchiv benötigt NTFS. Keine automatische Formatierung.' }
+foreach ($medium in @($MediumA,$MediumB)) {
+    if (-not (Test-Path -LiteralPath $medium -PathType Container)) { throw "Vorhandenen Archivordner auf dem USB-Stick wählen: $medium" }
+}
+$diskA = Get-Partition -DriveLetter ([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($MediumA)).Substring(0,1)) | Get-Disk
+$diskB = Get-Partition -DriveLetter ([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($MediumB)).Substring(0,1)) | Get-Disk
+$diskLocal = Get-Partition -DriveLetter ([IO.Path]::GetPathRoot($rootPath).Substring(0,1)) | Get-Disk
+if (-not $diskA -or -not $diskB -or -not $diskLocal) { throw 'Physische Datenträger müssen vor der Einrichtung eindeutig bestimmbar sein.' }
+if ($diskA.Number -eq $diskB.Number -or $diskLocal.Number -in @($diskA.Number,$diskB.Number)) { throw 'Lokales Archiv, A und B benötigen drei getrennte physische Datenträger.' }
 if ((Test-Path $rootPath) -and (Get-ChildItem -Force $rootPath)) { throw 'Neuen leeren Archivordner wählen; Altbestand ausdrücklich mit MigrateFrom übernehmen.' }
-foreach ($account in $Operators) { $null = Get-LocalUser -Name $account }
+$adminMembers = Get-LocalGroup -SID 'S-1-5-32-544' | Get-LocalGroupMember
+foreach ($account in $Operators) {
+    $user = Get-LocalUser -Name $account
+    if ($adminMembers | Where-Object SID -eq $user.SID) { throw "Bediener muss persönliches Standardkonto sein: $account. Admin-Konto getrennt verwenden." }
+}
 $group = Get-LocalGroup ZugpferdArchivBediener -ErrorAction SilentlyContinue
 if (-not $group) { $group = New-LocalGroup ZugpferdArchivBediener -Description 'Persönliche Archivbediener; keine direkten Schreibrechte auf übernommene Belege' }
 foreach ($account in $Operators) {

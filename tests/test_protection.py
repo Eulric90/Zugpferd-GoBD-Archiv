@@ -14,3 +14,11 @@ def test_operator_write_or_owner_control_is_rejected():
         "service",
         {"admin", "service"},
     )
+
+
+@pytest.mark.parametrize("mask", [0x40000, 0x80000, 0x40, 0x10000])
+def test_parent_permission_takeover_or_deletion_is_rejected(mask):
+    with pytest.raises(ArchiveError):
+        validate_acl(
+            [(0, mask, "operator")], "admin", {"admin", "service"}, parent_only=True
+        )
