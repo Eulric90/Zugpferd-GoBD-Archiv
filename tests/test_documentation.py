@@ -38,10 +38,12 @@ def test_document_generation_versioned_and_verified(doc_archive):
     assert report.success
     assert len(report.outputs) == 3
     html = next(Path(p) for p in report.outputs if p.endswith(".html"))
-    assert "Muster &amp; Partner &lt;GmbH&gt;" in html.read_text()
-    assert "Entwurf" in html.read_text()
-    assert "Die Software allein garantiert keine GoBD-Konformität" in html.read_text()
-    assert "SHA-256" in html.read_text()
+    assert "Muster &amp; Partner &lt;GmbH&gt;" in html.read_text(encoding="utf-8")
+    assert "Entwurf" in html.read_text(encoding="utf-8")
+    assert "Die Software allein garantiert keine GoBD-Konformität" in html.read_text(
+        encoding="utf-8"
+    )
+    assert "SHA-256" in html.read_text(encoding="utf-8")
     latest = load_latest(service.root)
     assert latest["answers"]["organization"] == data.values["organization"]
     assert latest["context"]["archive_id"] == service.configuration()["archive_id"]
