@@ -29,15 +29,15 @@ def test_number_reservations_persist_and_exhaust(tmp_path):
 
 def test_import_duplicate_conflict_and_source_unchanged(tmp_path):
     source = tmp_path / "input.pdf"
-    source.write_bytes(b"%PDF original")
+    source.write_bytes(b"original")
     register = Register(tmp_path / "archive", actor="test-SID")
     register.start_series(2026, "", 0, "Erstbestand")
     first = register.ingest(source, fields("Ausgang", "20260001"))
     assert register.ingest(source, fields("Ausgang", "20260001"))["id"] == first["id"]
-    source.write_bytes(b"%PDF different")
+    source.write_bytes(b"different")
     with pytest.raises(ArchiveError, match="nummer"):
         register.ingest(source, fields("Ausgang", "20260001"))
-    assert source.read_bytes() == b"%PDF different"
+    assert source.read_bytes() == b"different"
     assert len(register.records()) == 1
 
 
@@ -76,3 +76,35 @@ def test_original_tampering_is_detected(tmp_path):
     (register.root / record["original_relative"]).write_bytes(b"tampered")
     with pytest.raises(ArchiveError, match="Original"):
         register.records()
+
+
+def test_interrupted_commit_resumes_same_object(tmp_path, monkeypatch):
+    source = tmp_path / "source.pdf"
+    source.write_bytes(b"original")
+    register = Register(tmp_path / "archive", actor="test-SID")
+    original_append = register._append
+
+    def interrupted(event, data):
+        if event == "invoice_imported":
+            raise ArchiveError("Stromausfall vor Register-Commit")
+        original_append(event, data)
+
+    monkeypatch.setattr(register, "_append", interrupted)
+    with pytest.raises(ArchiveError):
+        register.ingest(source, fields())
+    monkeypatch.setattr(register, "_append", original_append)
+    result = register.ingest(source, fields())
+    assert len(register.records()) == 1
+    assert len(list((register.root / "Eingang").rglob("source.pdf"))) == 1
+    assert result["sha256"]
+
+
+def test_status_cannot_fake_sent_without_attachment(tmp_path):
+    source = tmp_path / "source.pdf"
+    source.write_bytes(b"original")
+    register = Register(tmp_path / "archive", actor="test-SID")
+    record = register.ingest(source, fields())
+    with pytest.raises(ArchiveError, match="Versand"):
+        register.correct(
+            record["id"], {"status": "versandt"}, "Versand einfach abhaken"
+        )

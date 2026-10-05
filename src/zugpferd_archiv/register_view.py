@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QHBoxLayout,
+    QGridLayout,
     QInputDialog,
     QLabel,
     QLineEdit,
@@ -27,7 +28,7 @@ from .workflow import export_register, restore_snapshot, retention
 
 
 class RegisterView(QDialog):
-    def __init__(self, root: Path, records: list[dict], parent=None):
+    def __init__(self, root: Path, records: list[dict], parent=None, tasks=None):
         super().__init__(parent)
         self.root, self.records, self.host = root, records, parent
         self.setWindowTitle("Belegregister und offene Aufgaben")
@@ -39,6 +40,14 @@ class RegisterView(QDialog):
         )
         self.search.textChanged.connect(self.populate)
         layout.addWidget(self.search)
+        period = QHBoxLayout()
+        self.first, self.last = QLineEdit("0001-01-01"), QLineEdit("9999-12-31")
+        for editor in (self.first, self.last):
+            editor.setMaxLength(10)
+            editor.textChanged.connect(self.populate)
+            period.addWidget(editor)
+        period.addWidget(QLabel("Rechnungsdatum von / bis (JJJJ-MM-TT)"))
+        layout.addLayout(period)
         self.read_only = QCheckBox("Nur lesender Prüfzugriff")
         self.read_only.setChecked(True)
         layout.addWidget(self.read_only)
@@ -59,19 +68,31 @@ class RegisterView(QDialog):
         layout.addWidget(self.table)
         self.details = QTextBrowser()
         layout.addWidget(self.details)
+        self.tasks_text = QTextBrowser()
+        self.tasks_text.setMaximumHeight(110)
+        self.tasks_text.setPlainText(
+            "\n".join(str(task) for task in (tasks or []))
+            or "Keine technischen Registeraufgaben offen; Portal-/Papierabgleich bleibt erforderlich."
+        )
+        layout.addWidget(self.tasks_text)
         self.table.itemSelectionChanged.connect(self.describe)
-        row = QHBoxLayout()
+        row = QGridLayout()
         layout.addLayout(row)
-        for text, action in [
-            ("Original / XML anzeigen", self.open_original),
-            ("Metadaten korrigieren / Status", self.correct),
-            ("Versand bestätigen", self.sent),
-            ("Registerexport / Ausdruck", self.export),
-            ("Wiederherstellung in neuen Ordner", self.restore),
-        ]:
+        for index, (text, action) in enumerate(
+            [
+                ("Original / XML anzeigen", self.open_original),
+                ("Metadaten korrigieren / Status", self.correct),
+                ("Versand bestätigen", self.sent),
+                ("Nachweis zuordnen", self.add_related),
+                ("Nummernlücke erklären", self.explain_number),
+                ("Periodenabgleich protokollieren", self.close_period),
+                ("Registerexport / Ausdruck", self.export),
+                ("Wiederherstellung in neuen Ordner", self.restore),
+            ]
+        ):
             button = QPushButton(text)
             button.clicked.connect(action)
-            row.addWidget(button)
+            row.addWidget(button, index // 3, index % 3)
         layout.addWidget(
             QLabel(
                 "Offene Aufgaben: ungeprüfte Eingänge, nicht bestätigte Ausgänge, A/B-Rückstände und Nummernreservierungen mit dem Portal/Papierregister abgleichen."
@@ -84,7 +105,8 @@ class RegisterView(QDialog):
         self.visible = [
             r
             for r in self.records
-            if text
+            if self.first.text() <= r["invoice_date"] <= self.last.text()
+            and text
             in " ".join(
                 str(r.get(k, ""))
                 for k in (
@@ -141,12 +163,23 @@ class RegisterView(QDialog):
             return
 
         def refreshed(result):
-            self.records = result
+            self.records = result["records"]
+            self.tasks_text.setPlainText(
+                "\n".join(str(task) for task in result["tasks"])
+                or "Keine technischen Registeraufgaben offen"
+            )
             self.populate()
             QMessageBox.information(self, "Protokolliert", message)
 
         self.host.launch(
-            lambda progress: (action(), Register(self.root).records())[1], refreshed
+            lambda progress: (
+                action(),
+                dict(
+                    records=Register(self.root).records(),
+                    tasks=Register(self.root).tasks(),
+                ),
+            )[1],
+            refreshed,
         )
 
     def correct(self):
@@ -220,6 +253,55 @@ class RegisterView(QDialog):
         from .document_view import DocumentView
 
         DocumentView(self.root / record["original_relative"], record, self).exec()
+
+    def add_related(self):
+        record = self.selected()
+        if not record:
+            return
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Relevanten Beleg oder Mail zuordnen"
+        )
+        if not filename:
+            return
+        kind, accepted = QInputDialog.getText(
+            self, "Zuordnung", "Begründung / Art des Nachweises"
+        )
+        if accepted and kind.strip():
+            self.mutation(
+                lambda: Register(self.root).add_related(
+                    record["id"], Path(filename), kind
+                ),
+                "Nachweis unverändert zugeordnet; A/B-Sicherung erneut ausführen",
+            )
+
+    def explain_number(self):
+        number, accepted = QInputDialog.getText(
+            self, "Nummernlücke", "Reservierte oder fehlende Nummer"
+        )
+        if not accepted:
+            return
+        reason, accepted = QInputDialog.getText(
+            self, "Begründung", "Was ist mit dieser Nummer geschehen?"
+        )
+        if accepted:
+            self.mutation(
+                lambda: Register(self.root).explain_number(number, reason),
+                "Lücke begründet; Nummer bleibt gesperrt",
+            )
+
+    def close_period(self):
+        reason, accepted = QInputDialog.getText(
+            self,
+            "Tatsächlicher Periodenabgleich",
+            "Welche Portal-/Mail-/Papierquellen wurden mit dem Register abgeglichen? Offene Lücken nennen.",
+        )
+        if accepted:
+            self.mutation(
+                lambda: Register(self.root).close_period(
+                    self.first.text(), self.last.text(), reason
+                ),
+                "Periodenstand und Abgleichgrundlage protokolliert",
+            )
 
     def export(self):
         first, accepted = QInputDialog.getText(

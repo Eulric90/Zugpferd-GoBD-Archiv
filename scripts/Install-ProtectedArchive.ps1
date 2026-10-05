@@ -24,7 +24,17 @@ foreach ($account in $Operators) {
 $install = Join-Path $env:ProgramFiles 'ZugpferdArchiv'
 if (Test-Path $install) { throw 'Installationsordner besteht; kein Überschreiben bestehender Installation.' }
 Copy-Item (Join-Path $PSScriptRoot 'ZugpferdArchiv') $install -Recurse
-$exe = Join-Path $install 'ZugpferdArchiv.exe'
+$exe = Join-Path $install 'ZugpferdArchivService.exe'
+$keys = Join-Path (Split-Path $rootPath -Parent) ('.' + (Split-Path $rootPath -Leaf) + '-Schluessel')
+New-Item $rootPath,$keys -ItemType Directory -Force | Out-Null
+foreach ($path in @($rootPath,$keys)) {
+    $initialAcl = [Security.AccessControl.DirectorySecurity]::new()
+    $initialAcl.SetAccessRuleProtection($true,$false)
+    foreach ($sid in @('S-1-5-18','S-1-5-32-544')) {
+        $initialAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($sid),'FullControl','ContainerInherit,ObjectInherit','None','Allow'))
+    }
+    Set-Acl -LiteralPath $path -AclObject $initialAcl
+}
 $arguments = @('--provision','--root',$rootPath,'--medium-a',$MediumA,'--medium-b',$MediumB)
 if ($MigrateFrom) { $arguments += @('--migrate-from',$MigrateFrom) }
 $process = Start-Process -FilePath $exe -ArgumentList ($arguments | ForEach-Object { '"' + $_ + '"' }) -Wait -PassThru
@@ -52,12 +62,28 @@ function Protect-Folder([string]$Path,[bool]$OperatorRead) {
     }
     if ($OperatorRead) { $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($group.SID,'ReadAndExecute','ContainerInherit,ObjectInherit','None','Allow')) }
     Set-Acl -LiteralPath $Path -AclObject $acl
+    & icacls.exe $Path /setowner '*S-1-5-32-544' /T /C | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Eigentümerschutz fehlgeschlagen: $Path" }
     & icacls.exe "$Path\*" /reset /T /C | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Rechteprüfung fehlgeschlagen: $Path" }
 }
 Protect-Folder $rootPath $true
 Protect-Folder $configFolder $false
 Protect-Folder $keys $false
+foreach ($medium in @($MediumA,$MediumB)) {
+    $mediumPath = [IO.Path]::GetFullPath($medium)
+    $mediaVolume = Get-Volume -DriveLetter ([IO.Path]::GetPathRoot($mediumPath).Substring(0,1))
+    if ($mediaVolume.FileSystem -eq 'NTFS' -and $mediumPath.TrimEnd('\') -ne [IO.Path]::GetPathRoot($mediumPath).TrimEnd('\')) {
+        Protect-Folder $mediumPath $true
+    } else {
+        Write-Warning "Medium $mediumPath: kein NTFS-Ordnerschutz eingerichtet. Archivunterordner auf NTFS bevorzugen; keine automatische Formatierung."
+        if ($mediaVolume.FileSystem -eq 'NTFS') {
+            & icacls.exe $mediumPath /grant ("*$($serviceSid):(OI)(CI)M") /T /C | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Schreibdienst kann das USB-Archiv nicht erreichen' }
+        }
+    }
+    Write-Host "USB $mediumPath : $($mediaVolume.FileSystem), frei $($mediaVolume.SizeRemaining) Bytes. Beide vollständigen Bestände plus Sicherungsstände benötigen ausreichend Platz."
+}
 Start-Service $serviceName
 Write-Host "Geschütztes Archiv: $rootPath"
 Write-Host 'Neu anmelden, damit Gruppenmitgliedschaft wirksam wird. Oberfläche als persönlicher Standardbenutzer starten.'

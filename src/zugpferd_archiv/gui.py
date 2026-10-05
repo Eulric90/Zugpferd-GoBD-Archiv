@@ -55,6 +55,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Zugpferd Archiv 1.0 – GoBD-unterstützende Archivierung")
         self.resize(940, 740)
+        self.setAcceptDrops(True)
         self.settings = QSettings("ZugpferdArchiv", "Desktop") if use_settings else None
         saved = (
             self.settings.value("root", r"C:\Rechnungen")
@@ -76,6 +77,9 @@ class MainWindow(QMainWindow):
         )
         note.setWordWrap(True)
         layout.addWidget(note)
+        self.protection_label = QLabel("Schutzprofil wird geprüft …")
+        self.protection_label.setWordWrap(True)
+        layout.addWidget(self.protection_label)
         row = QHBoxLayout()
         row.addWidget(self.root_edit)
         self.controls.append(self.root_edit)
@@ -193,19 +197,22 @@ class MainWindow(QMainWindow):
         row.addWidget(button)
         return button
 
-    def import_invoice(self, direction: str) -> None:
-        from .invoice import analyze_file, mail_attachments
+    def import_invoice(self, direction: str, selected_file: str | None = None) -> None:
+        from .invoice import mail_attachments
+        from .inspection import analyze_bounded
         from .invoice_wizard import InvoiceWizard
         from .register import Register
         from . import storage
         import tempfile
 
-        selected, _ = QFileDialog.getOpenFileName(
-            self,
-            "Originalrechnung oder Mail auswählen",
-            "",
-            "Rechnungen und Mails (*.pdf *.xml *.eml);;Alle Dateien (*)",
-        )
+        selected = selected_file
+        if selected is None:
+            selected, _ = QFileDialog.getOpenFileName(
+                self,
+                "Originalrechnung oder Mail auswählen",
+                "",
+                "Rechnungen und Mails (*.pdf *.xml *.eml);;Alle Dateien (*)",
+            )
         if not selected:
             return
         original = Path(selected)
@@ -219,7 +226,7 @@ class MainWindow(QMainWindow):
             if original.suffix.casefold() == ".eml":
                 items = mail_attachments(original.read_bytes())
                 return dict(items=items)
-            return dict(source=source, extracted=analyze_file(source))
+            return dict(source=source, extracted=analyze_bounded(source))
 
         def show(value):
             if "items" in value:
@@ -248,7 +255,7 @@ class MainWindow(QMainWindow):
                 storage.write_new(source, item["content"])
                 self.launch(
                     lambda progress: dict(
-                        source=source, extracted=analyze_file(source)
+                        source=source, extracted=analyze_bounded(source)
                     ),
                     show,
                 )
@@ -260,6 +267,11 @@ class MainWindow(QMainWindow):
                 temporary.cleanup()
                 return
             fields = wizard.data()
+            automatic_backup = wizard.backup_now.isChecked()
+            try:
+                media_pair = (self.medium("A"), self.medium("B"))
+            except ArchiveError:
+                media_pair = None
 
             def commit(progress):
                 register = Register(root)
@@ -275,11 +287,25 @@ class MainWindow(QMainWindow):
                         record["id"], xml, "Extrahierte XML; Original unverändert"
                     )
                 temporary.cleanup()
-                return record
+                report = (
+                    ArchiveService(root, progress).backup(*media_pair)
+                    if automatic_backup and media_pair
+                    else None
+                )
+                return record, report
 
-            def committed(record):
+            def committed(value):
+                record, report = value
+                secured = bool(report and report.success)
+                if report:
+                    self.completed(report)
                 self.status.setText(
-                    f"Lokal übernommen: {record['number']} – A/B-Sicherung ausstehend"
+                    f"Lokal übernommen: {record['number']} – "
+                    + (
+                        "A und B verifiziert"
+                        if secured
+                        else "A/B-Sicherung ausstehend; Bericht prüfen"
+                    )
                 )
                 self.log.append(
                     f"Beleg-ID {record['id']} / {record['original_relative']}"
@@ -288,13 +314,34 @@ class MainWindow(QMainWindow):
                     self,
                     "Übernommen",
                     "Original unverändert lokal abgelegt.\n"
-                    "Jetzt beide USB-Medien anschließen und ‚Sichern auf A und B‘ ausführen.\n"
-                    "Ausgänge: exakt diese abgelegte Originaldatei versenden, danach Versand im Register bestätigen.",
+                    + (
+                        "Automatisch auf A und B gesichert und rückgelesen.\n"
+                        if secured
+                        else "Sicherung offen: beide USB-Medien anschließen und ‚Sichern auf A und B‘ ausführen.\n"
+                    )
+                    + "Ausgänge: exakt diese abgelegte Originaldatei versenden, danach Versand im Register bestätigen.",
                 )
 
             self.launch(commit, committed)
 
         self.launch(prepare, show)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls() and all(
+            url.isLocalFile() for url in event.mimeData().urls()
+        ):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        urls = event.mimeData().urls()
+        if len(urls) != 1 or (self.worker and self.worker.isRunning()):
+            return
+        direction, accepted = QInputDialog.getItem(
+            self, "Beleg übernehmen", "Richtung", ["Eingang", "Ausgang"], 0, False
+        )
+        if accepted:
+            self.import_invoice(direction, urls[0].toLocalFile())
+            event.acceptProposedAction()
 
     def configure_series(self):
         from .register import Register
@@ -358,8 +405,12 @@ class MainWindow(QMainWindow):
 
         root = self.root()
         self.launch(
-            lambda progress: Register(root).records(),
-            lambda records: RegisterView(root, records, self).exec(),
+            lambda progress: dict(
+                records=Register(root).records(), tasks=Register(root).tasks()
+            ),
+            lambda result: RegisterView(
+                root, result["records"], self, result["tasks"]
+            ).exec(),
         )
 
     def open_instructions(self):
@@ -597,7 +648,26 @@ class MainWindow(QMainWindow):
             except (ArchiveError, OSError):
                 last = None
             matches = []
+            import json
+            from .service import protected
+
+            hints = {}
+            hints_path = root / "Archivverwaltung/Konfiguration/Medienpfade.json"
+            if hints_path.is_file():
+                hints = json.loads(hints_path.read_text(encoding="utf-8"))
             for drive in drives:
+                for role, relative in hints.items():
+                    try:
+                        from .storage import child
+
+                        candidate = (
+                            child(drive.root, relative) if relative else drive.root
+                        )
+                        marker = read_marker(candidate)
+                        if config and marker.medium_uuid == config[role]["medium_uuid"]:
+                            matches.append((role, candidate))
+                    except ArchiveError:
+                        continue
                 try:
                     marker = read_marker(drive.root)
                     if (
@@ -607,10 +677,15 @@ class MainWindow(QMainWindow):
                         matches.append((marker.role, drive.root))
                 except ArchiveError:
                     continue
-            return drives, matches, last
+            return drives, matches, last, protected(root)
 
         def loaded(value):
-            drives, matches, last = value
+            drives, matches, last, is_protected = value
+            self.protection_label.setText(
+                "Geschütztes Windows-Dienstprofil: Bediener erhalten nur Leserechte auf übernommene Belege."
+                if is_protected
+                else "Portabler Modus ohne NTFS-Dienstschutz. Vor dem Livebetrieb geschützte Admin-Installation und Abnahme durchführen."
+            )
             for role, combo in self.media_combos.items():
                 combo.blockSignals(True)
                 combo.clear()

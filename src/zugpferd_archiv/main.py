@@ -15,10 +15,19 @@ def main() -> int:
     parser.add_argument("--medium-a", type=Path)
     parser.add_argument("--medium-b", type=Path)
     parser.add_argument("--migrate-from", type=Path)
+    parser.add_argument("--inspect-file", type=Path)
+    parser.add_argument("--inspection-output", type=Path)
     parser.add_argument(
         "--smoke-test", action="store_true", help="GUI starten und automatisch beenden"
     )
     args = parser.parse_args()
+    if args.inspect_file:
+        if args.inspection_output is None:
+            parser.error("--inspection-output erforderlich")
+        from .inspection import inspect_to_file
+
+        inspect_to_file(args.inspect_file, args.inspection_output)
+        return 0
     if args.service:
         from .windows_service import run
 

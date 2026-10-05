@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWizard,
     QWizardPage,
+    QScrollArea,
+    QWidget,
 )
 
 
@@ -28,7 +30,13 @@ class InvoiceWizard(QWizard):
         self.resize(820, 680)
         page = QWizardPage()
         page.setTitle("Original und Rechnungsdaten prüfen")
-        layout = QVBoxLayout(page)
+        outer = QVBoxLayout(page)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+        layout = QVBoxLayout(content)
         layout.addWidget(
             QLabel(
                 f"Original: {source.name}\nFormat: {extracted.get('format', '')}\nProfil: {extracted.get('profile', '')}"
@@ -55,6 +63,7 @@ class InvoiceWizard(QWizard):
             received_at="Empfangsdatum (falls bekannt)",
             reference="Geschäftsvorfall / Buchungsreferenz",
             payment_reference="Zahlungsreferenz",
+            related_id="Beleg-ID der ursprünglichen Rechnung (Storno/Berichtigung)",
         )
         for key, label in labels.items():
             value = extracted.get(key, "")
@@ -71,6 +80,9 @@ class InvoiceWizard(QWizard):
         self.document_type.addItems(
             [
                 "Rechnung",
+                "Storno",
+                "Berichtigung",
+                "Gutschrift",
                 "Buchungsbeleg",
                 "Geschäftsbrief",
                 "Papier-Scan",
@@ -90,6 +102,11 @@ class InvoiceWizard(QWizard):
         self.validation = QLabel()
         self.validation.setWordWrap(True)
         layout.addWidget(self.validation)
+        self.backup_now = QCheckBox(
+            "Nach Übernahme automatisch auf die ausgewählten Medien A und B sichern"
+        )
+        self.backup_now.setChecked(True)
+        layout.addWidget(self.backup_now)
         self.addPage(page)
         summary = QWizardPage()
         summary.setTitle("Übernahme bestätigen")
@@ -98,7 +115,7 @@ class InvoiceWizard(QWizard):
         sl.addWidget(self.summary)
         sl.addWidget(
             QLabel(
-                "Mit Fertigstellen wird das Original unverändert lokal übernommen.\nUSB-Sicherung erfolgt separat und gilt erst nach Prüfung von A und B als erfolgreich."
+                "Mit Fertigstellen wird das Original unverändert lokal übernommen.\nEine gewählte automatische USB-Sicherung gilt erst nach Prüfung von A und B als erfolgreich."
             )
         )
         self.addPage(summary)

@@ -20,11 +20,19 @@ IN_SERVICE = False
 
 
 def protected(root: Path) -> bool:
-    return (
-        os.name == "nt"
-        and not IN_SERVICE
-        and (root / ".protected-service.json").is_file()
-    )
+    if os.name != "nt" or IN_SERVICE:
+        return False
+    try:
+        marker = json.loads(
+            (root / ".protected-service.json").read_text(encoding="utf-8")
+        )
+        return (
+            marker["service"] == SERVICE_NAME
+            and str(Path(marker["root"]).resolve()).casefold()
+            == str(root.resolve()).casefold()
+        )
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 class Dispatcher:
@@ -37,8 +45,13 @@ class Dispatcher:
 
         if not isinstance(request, dict) or not actor:
             raise ArchiveError("Ungültige Dienstanfrage")
+        if (
+            request.get("archive_root")
+            and Path(request["archive_root"]).resolve() != self.root.resolve()
+        ):
+            raise ArchiveError("Oberfläche ist mit anderem Dienstarchiv verbunden")
         operation = request.get("operation")
-        if operation == "ingest" or operation == "add_related":
+        if operation in ("ingest", "add_related", "mark_sent_mail"):
             filename = request.get("filename", "")
             if Path(filename).name != filename or not filename:
                 raise ArchiveError("Ungültiger Importdateiname")
@@ -50,12 +63,20 @@ class Dispatcher:
                     raise ArchiveError("Import überschreitet Größenlimit")
                 storage.write_new(source, raw)
                 register = Register(self.root, actor=actor)
+                if operation == "mark_sent_mail":
+                    return register.mark_sent(
+                        request["id"],
+                        request["sent_date"],
+                        request["recipient"],
+                        source,
+                    )
                 if operation == "add_related":
                     return register.add_related(request["id"], source, request["kind"])
-                from .invoice import analyze_file
+                from .inspection import analyze_bounded
 
-                validation = analyze_file(source)
+                validation = analyze_bounded(source)
                 fields = dict(request["fields"])
+                fields["_source_metadata"] = request.get("source_metadata")
                 for key in (
                     "format",
                     "profile",
@@ -79,6 +100,9 @@ class Dispatcher:
                         )
                 return register.ingest(source, fields)
         register_ops = {
+            "tasks": 0,
+            "explain_number": 2,
+            "close_period": 3,
             "save_setup": 1,
             "business_setup": 0,
             "start_series": 4,
@@ -226,8 +250,14 @@ class RemoteRegister:
 
         self.journal = Journal(root / "Archivverwaltung/Register/events.jsonl")
 
+    def _request(self, payload):
+        return request(payload | {"archive_root": str(self.root)})
+
     def __getattr__(self, operation):
         if operation not in (
+            "tasks",
+            "explain_number",
+            "close_period",
             "save_setup",
             "business_setup",
             "start_series",
@@ -249,22 +279,28 @@ class RemoteRegister:
                     kwargs.get("first", "0001-01-01"),
                     kwargs.get("last", "9999-12-31"),
                 )
-            return request(dict(operation=operation, args=list(args)))
+            return self._request(dict(operation=operation, args=list(args)))
 
         return call
 
     def ingest(self, source: Path, fields: dict):
-        return request(
+        stat = source.stat()
+        return self._request(
             dict(
                 operation="ingest",
                 filename=source.name,
                 content=base64.b64encode(source.read_bytes()).decode(),
                 fields=fields,
+                source_metadata=dict(
+                    path=str(source),
+                    mtime_ns=stat.st_mtime_ns,
+                    ctime_ns=stat.st_ctime_ns,
+                ),
             )
         )
 
     def add_related(self, identity: str, source: Path, kind: str):
-        return request(
+        return self._request(
             dict(
                 operation="add_related",
                 id=identity,
@@ -277,7 +313,18 @@ class RemoteRegister:
     def mark_sent(
         self, identity: str, sent_date: str, recipient: str, attachment: Path
     ):
-        return request(
+        if attachment.suffix.casefold() == ".eml":
+            return self._request(
+                dict(
+                    operation="mark_sent_mail",
+                    id=identity,
+                    sent_date=sent_date,
+                    recipient=recipient,
+                    filename=attachment.name,
+                    content=base64.b64encode(attachment.read_bytes()).decode(),
+                )
+            )
+        return self._request(
             dict(
                 operation="mark_sent",
                 args=[identity, sent_date, recipient, storage.sha256(attachment)],
@@ -289,6 +336,9 @@ class RemoteArchive:
     def __init__(self, root: Path, progress=None):
         self.root = storage.safe_path(root)
         self.progress = progress or (lambda text: None)
+
+    def _request(self, payload):
+        return request(payload | {"archive_root": str(self.root)})
 
     def __getattr__(self, operation):
         if operation not in (
@@ -313,7 +363,7 @@ class RemoteArchive:
                 else arg
                 for arg in args
             ]
-            result = request(dict(operation=operation, args=serialized))
+            result = self._request(dict(operation=operation, args=serialized))
             if operation in ("backup", "check", "compare", "create_documentation"):
                 from .reports import Report
 
@@ -323,7 +373,7 @@ class RemoteArchive:
         return call
 
     def _pair(self, a, b, report):
-        return request(dict(operation="verify_pair", args=[str(a), str(b)]))
+        return self._request(dict(operation="verify_pair", args=[str(a), str(b)]))
 
     def export(
         self, a, b, destination, first_year, last_year, first_date=None, last_date=None
@@ -386,8 +436,12 @@ def serve(config: dict, stop=None):
     import win32pipe
     import win32security
 
+    service_sid = win32security.ConvertSidToStringSid(
+        win32security.LookupAccountName(None, f"NT SERVICE\\{SERVICE_NAME}")[0]
+    )
     descriptor = win32security.ConvertStringSecurityDescriptorToSecurityDescriptor(
-        f"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;{config['operator_group_sid']})", 1
+        f"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;{service_sid})(A;;GRGW;;;{config['operator_group_sid']})",
+        1,
     )
     attributes = pywintypes.SECURITY_ATTRIBUTES()
     attributes.SECURITY_DESCRIPTOR = descriptor
@@ -405,6 +459,8 @@ def serve(config: dict, stop=None):
     while stop is None or not stop():
         try:
             win32pipe.ConnectNamedPipe(pipe, None)
+            if stop and stop():
+                break
             raw = win32file.ReadFile(pipe, MAX_REQUEST)[1]
             win32pipe.ImpersonateNamedPipeClient(pipe)
             try:

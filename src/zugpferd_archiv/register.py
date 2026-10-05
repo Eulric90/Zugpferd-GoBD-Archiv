@@ -89,6 +89,106 @@ class Register:
         entries = [e["data"] for e in self.events() if e["event"] == "business_setup"]
         return entries[-1] if entries else None
 
+    def explain_number(self, number: str, reason: str) -> None:
+        if not reason.strip():
+            raise ArchiveError("Nummernlücke braucht Begründung")
+        with storage.exclusive_lock(self.root):
+            if not any(
+                t["kind"] == "number_gap" and t["number"] == number
+                for t in self.tasks()
+            ):
+                raise ArchiveError("Keine offene Nummernreservierung/Lücke")
+            self._append("number_explained", dict(number=number, reason=reason))
+
+    def tasks(self) -> list[dict]:
+        records = self.records()
+        result = []
+        known_files = set()
+        for record in records:
+            known_files.add(record["original_relative"])
+            known_files.update(i["path"] for i in record.get("related_files", []))
+            if record["status"] == "offen":
+                result.append(
+                    dict(
+                        kind="review",
+                        id=record["id"],
+                        detail="Sachliche/technische Klärung offen",
+                    )
+                )
+            if record["direction"] == "Ausgang" and record["status"] not in (
+                "versandt",
+                "storniert",
+                "korrigiert",
+            ):
+                result.append(
+                    dict(kind="send", id=record["id"], detail="Versand nicht bestätigt")
+                )
+            if record["backup_status"] != "A und B rückgelesen und verifiziert":
+                result.append(
+                    dict(kind="backup", id=record["id"], detail=record["backup_status"])
+                )
+        entries = self.events()
+        explained = {
+            e["data"]["number"] for e in entries if e["event"] == "number_explained"
+        }
+        used = {
+            e["data"]["record"]["number"]
+            for e in entries
+            if e["event"] == "invoice_imported"
+            and e["data"]["record"]["direction"] == "Ausgang"
+        }
+        used.update(r["number"] for r in records if r["direction"] == "Ausgang")
+        for entry in entries:
+            if entry["event"] == "series_started":
+                state = entry["data"]
+                last = self.series(state["year"])["last"]
+                for sequence in range(state["last"] + 1, last + 1):
+                    number = f"{state['year']:04}{state['separator']}{sequence:04}"
+                    if number not in used | explained:
+                        result.append(
+                            dict(
+                                kind="number_gap",
+                                number=number,
+                                detail="Reservierung/Lücke mit Grund erklären; nicht wieder vergeben",
+                            )
+                        )
+        for direction in ("Eingang", "Ausgang"):
+            folder = self.root / direction
+            if folder.exists():
+                for path in folder.rglob("*"):
+                    if (
+                        path.is_file()
+                        and path.relative_to(self.root).as_posix() not in known_files
+                    ):
+                        result.append(
+                            dict(
+                                kind="unassigned",
+                                path=path.relative_to(self.root).as_posix(),
+                                detail="Datei noch keinem Registerbeleg zugeordnet",
+                            )
+                        )
+        return result
+
+    def close_period(self, first: str, last: str, reason: str) -> dict:
+        date.fromisoformat(first)
+        date.fromisoformat(last)
+        if first > last or not reason.strip():
+            raise ArchiveError(
+                "Periodenabgleich braucht Zeitraum und Grundlage des tatsächlichen Quellenabgleichs"
+            )
+        with storage.exclusive_lock(self.root):
+            records = self.search(first=first, last=last)
+            entries = self.events()
+            result = dict(
+                first=first,
+                last=last,
+                reason=reason,
+                ids=[r["id"] for r in records],
+                register_hash=entries[-1]["entry_hash"] if entries else "0" * 64,
+            )
+            self._append("period_reconciled", result)
+            return result
+
     def _append(self, event: str, data: dict) -> None:
         self.journal.append(event, data | {"actor": self.actor})
 
@@ -179,6 +279,33 @@ class Register:
     def ingest(self, source: Path, fields: dict) -> dict:
         source = storage.safe_path(source)
         fields = dict(fields)
+        source_metadata = fields.pop("_source_metadata", None)
+        from .inspection import analyze_bounded
+
+        validation = analyze_bounded(source)
+        fields.update(
+            {
+                key: validation.get(key)
+                for key in ("format", "profile", "validator_version", "critical_errors")
+            }
+        )
+        fields["xml_fields"] = {
+            key: value
+            for key, value in validation.items()
+            if key not in ("xml", "critical_errors")
+        }
+        fields["tax_breakdown"] = validation.get("tax_breakdown", [])
+        for key in ("number", "invoice_date", "currency", "net", "tax", "gross"):
+            if validation.get(key):
+                matches = (
+                    amount(fields.get(key, "")) == amount(validation[key])
+                    if key in ("net", "tax", "gross")
+                    else fields.get(key) == validation[key]
+                )
+                if not matches:
+                    fields["critical_errors"].append(
+                        f"Registerfeld {key} widerspricht führender XML"
+                    )
         for key in (
             "direction",
             "number",
@@ -197,8 +324,16 @@ class Register:
         if amount(fields["net"]) + amount(fields["tax"]) != amount(fields["gross"]):
             raise ArchiveError("Summen: Netto plus Steuer entspricht nicht Brutto")
         digest = storage.sha256(source)
+        if validation.get("source_sha256") and validation["source_sha256"] != digest:
+            raise ArchiveError(
+                "Quelle während technischer Prüfung verändert; erneut prüfen"
+            )
         with storage.exclusive_lock(self.root):
             records = self.records()
+            if fields.get("related_id") and not any(
+                r["id"] == fields["related_id"] for r in records
+            ):
+                raise ArchiveError("Storno/Berichtigung braucht vorhandene Beleg-ID")
             for record in records:
                 if record["sha256"] == digest:
                     if record["direction"] != fields["direction"]:
@@ -216,6 +351,16 @@ class Register:
                         "Rechnungsnummer bereits mit anderem Original vorhanden"
                     )
             if fields["direction"] == "Ausgang" and not fields.get("historical"):
+                assigned = {
+                    e["data"]["record"]["number"]
+                    for e in self.events()
+                    if e["event"] == "invoice_imported"
+                    and e["data"]["record"]["direction"] == "Ausgang"
+                }
+                if fields["number"] in assigned:
+                    raise ArchiveError(
+                        "Historisch vergebene Ausgangsnummer darf nicht erneut verwendet werden"
+                    )
                 state = self.series(invoice_date.year)
                 match = re.fullmatch(
                     f"{invoice_date.year:04}{re.escape(state['separator'])}(\\d{{4}})",
@@ -266,14 +411,22 @@ class Register:
                 id=identity,
                 original_relative=relative,
                 original_filename=source.name,
-                source_relative=str(source),
+                source_relative=source_metadata["path"]
+                if source_metadata
+                else str(source),
                 sha256=digest,
                 size=stat.st_size,
-                source_mtime_ns=stat.st_mtime_ns,
-                source_ctime_ns=stat.st_ctime_ns,
+                source_mtime_ns=source_metadata["mtime_ns"]
+                if source_metadata
+                else stat.st_mtime_ns,
+                source_ctime_ns=source_metadata["ctime_ns"]
+                if source_metadata
+                else stat.st_ctime_ns,
                 imported_at=now(),
                 actor=self.actor,
-                status="freigegeben" if fields.get("reviewed") else "offen",
+                status="freigegeben"
+                if fields.get("reviewed") and not fields["critical_errors"]
+                else "offen",
                 backup_status="Lokal übernommen – A/B ausstehend",
             )
             transaction = self.folder / "Vorgaenge" / f"{identity}.json"
@@ -334,10 +487,10 @@ class Register:
                 and not any(r["id"] == changes["related_id"] for r in records)
             ):
                 raise ArchiveError("Beziehung braucht vorhandene Beleg-ID")
-            if "number" in changes and any(
+            if {"number", "partner"} & changes.keys() and any(
                 r["id"] != identity
                 and r["direction"] == record["direction"]
-                and r["number"] == changes["number"]
+                and r["number"] == changes.get("number", record["number"])
                 and (
                     record["direction"] == "Ausgang"
                     or r["partner"] == changes.get("partner", record["partner"])
@@ -362,7 +515,22 @@ class Register:
         date.fromisoformat(sent_date)
         if record["direction"] != "Ausgang" or not recipient.strip():
             raise ArchiveError("Versand braucht Ausgangsrechnung und Empfänger")
-        if storage.sha256(attachment) != record["sha256"]:
+        if attachment.suffix.casefold() == ".eml":
+            from .invoice import mail_attachments, MAX_FILE
+
+            if attachment.stat().st_size > MAX_FILE:
+                raise ArchiveError("Mail überschreitet Größenlimit")
+            attachments = mail_attachments(attachment.read_bytes())
+            if not any(item["sha256"] == record["sha256"] for item in attachments):
+                raise ArchiveError(
+                    "Gesendeter Mail-Anhang entspricht nicht archiviertem Original"
+                )
+            self.add_related(
+                identity,
+                attachment,
+                "Gesendete Transportmail; identischer Rechnungsanhang geprüft",
+            )
+        elif storage.sha256(attachment) != record["sha256"]:
             raise ArchiveError("Versand-Anhang entspricht nicht archiviertem Original")
         self.correct(
             identity,

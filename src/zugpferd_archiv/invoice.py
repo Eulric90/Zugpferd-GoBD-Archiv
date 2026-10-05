@@ -177,6 +177,22 @@ def inspect_xml(raw: bytes) -> dict:
                 "/*/*[local-name()='TaxTotal']/*[local-name()='TaxSubtotal']"
             )
         ]
+    if syntax == "CII":
+        fields["tax"] = str(
+            root.xpath(
+                "string("
+                + totals
+                + "/*[local-name()='TaxTotalAmount'][not(@currencyID) or @currencyID=$currency])",
+                currency=fields["currency"],
+            )
+        )
+    elif syntax == "UBL":
+        fields["tax"] = str(
+            root.xpath(
+                "string(/*/*[local-name()='TaxTotal']/*[local-name()='TaxAmount'][@currencyID=$currency])",
+                currency=fields["currency"],
+            )
+        )
     if (
         "minimum" in profile.casefold()
         or "basicwl" in profile.casefold()
@@ -217,8 +233,9 @@ def inspect_file(path: Path) -> dict:
     if path.stat().st_size > MAX_FILE:
         raise ArchiveError("Datei überschreitet Größenlimit (64 MiB)")
     raw = path.read_bytes()
+    source_hash = hashlib.sha256(raw).hexdigest()
     if path.suffix.casefold() == ".xml":
-        return inspect_xml(raw) | {"xml": raw}
+        return inspect_xml(raw) | {"xml": raw, "source_sha256": source_hash}
     if raw.startswith(b"%PDF"):
         reader = PdfReader(io.BytesIO(raw), strict=True)
         xmls = []
@@ -231,9 +248,11 @@ def inspect_file(path: Path) -> dict:
             return inspect_xml(xmls[0]) | {
                 "xml": xmls[0],
                 "container": "ZUGFeRD/Factur-X PDF",
+                "source_sha256": source_hash,
             }
         return dict(
             format="PDF",
+            source_sha256=source_hash,
             profile="Kein strukturiertes E-Rechnungsoriginal",
             validator_version=VERSION,
             critical_errors=[],
@@ -241,6 +260,7 @@ def inspect_file(path: Path) -> dict:
         )
     return dict(
         format="Sonstiger Beleg",
+        source_sha256=source_hash,
         profile="Keine E-Rechnung erkannt",
         validator_version=VERSION,
         critical_errors=[],

@@ -50,6 +50,11 @@ def run():
     servicemanager.StartServiceCtrlDispatcher()
 
 
+def medium_subfolder(path: Path) -> str:
+    value = path.relative_to(Path(path.anchor)).as_posix()
+    return "" if value == "." else value
+
+
 def provision(
     root: Path, a: Path | None, b: Path | None, migration: Path | None = None
 ):
@@ -78,11 +83,23 @@ def provision(
             storage.safe_path(source)
             if source.is_file():
                 relative = source.relative_to(migration).as_posix()
+                if relative == ".protected-service.json":
+                    relative = "Archivverwaltung/Migration/alter-dienstmarker.json"
                 if ".partial-" in relative or source.name == ".zugpferd-operation.lock":
                     raise ValueError("Migration enthält ungeklärte Dateien")
                 storage.verified_copy(
                     source, storage.child(root, relative), storage.sha256(source)
                 )
+        old_key = (
+            migration.parent
+            / ("." + migration.name + "-Schluessel")
+            / "signing-key.pem"
+        )
+        if old_key.is_file():
+            new_key = (
+                root.parent / ("." + root.name + "-Schluessel") / "signing-key.pem"
+            )
+            storage.verified_copy(old_key, new_key, storage.sha256(old_key))
     archive = ArchiveService(root)
     archive.setup()
     if a and b:
@@ -93,6 +110,18 @@ def provision(
             if not (path / MARKER).exists():
                 register(path, role, archive_id)
         archive.configure(a, b)
+        if os.name == "nt":
+            storage.write_new(
+                root / "Archivverwaltung/Konfiguration/Medienpfade.json",
+                storage.canonical(
+                    {
+                        role: str(path.relative_to(Path(path.anchor)))
+                        .replace("\\", "/")
+                        .removeprefix(".")
+                        for role, path in (("A", a), ("B", b))
+                    }
+                ),
+            )
     storage.write_new(
         root / ".protected-service.json",
         storage.canonical(dict(service=service.SERVICE_NAME, root=str(root))),

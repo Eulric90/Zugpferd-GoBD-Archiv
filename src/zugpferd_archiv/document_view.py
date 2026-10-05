@@ -34,7 +34,20 @@ class DocumentView(QDialog):
             + "<p>XML ist bei E-Rechnungen führend. Registerkorrekturen verändern das Original nicht.</p>"
         )
         tabs.addTab(browser, "Lesbare Daten")
+        root = path.parents[len(Path(record["original_relative"]).parts) - 1]
+        for item in record.get("related_files", []):
+            if "XML" in item["kind"]:
+                raw_view = QTextBrowser()
+                from .xml_view import render_xml
+
+                raw_view.setHtml(render_xml((root / item["path"]).read_bytes()))
+                tabs.addTab(raw_view, "Führende XML (extrahiert)")
         if path.suffix.casefold() == ".xml":
             raw = QTextBrowser()
-            raw.setPlainText(path.read_text(encoding="utf-8"))
+            from .xml_view import render_xml
+
+            try:
+                raw.setHtml(render_xml(path.read_bytes()))
+            except Exception:
+                raw.setPlainText(path.read_bytes().decode("utf-8", errors="replace"))
             tabs.addTab(raw, "XML-Original")

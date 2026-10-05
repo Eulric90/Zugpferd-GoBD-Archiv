@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWizard,
     QWizardPage,
+    QScrollArea,
+    QWidget,
 )
 
 from .register import actor_identity
@@ -41,7 +43,13 @@ class SetupWizard(QWizard):
         self.resize(780, 600)
         page = QWizardPage()
         page.setTitle("Zuständigkeiten und Beginn festhalten")
-        layout = QVBoxLayout(page)
+        outer = QVBoxLayout(page)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+        layout = QVBoxLayout(content)
         self.edition = windows_edition()
         self.actor = actor_identity()
         self.service_protected = protected(root)

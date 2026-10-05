@@ -5,6 +5,8 @@ from __future__ import annotations
 import csv
 import html
 import io
+import json
+import hashlib
 from datetime import date
 from pathlib import Path
 
@@ -19,6 +21,9 @@ def retention(invoice_date: str, document_type: str, hold: str = "") -> dict:
     years = {
         "Rechnung": 8,
         "Buchungsbeleg": 8,
+        "Storno": 8,
+        "Berichtigung": 8,
+        "Gutschrift": 8,
         "Verfahrensdokumentation": 10,
         "Bücher": 10,
         "Geschäftsbrief": 6,
@@ -63,13 +68,23 @@ def export_register(
     if first > last:
         raise ArchiveError("Ungültiger Belegzeitraum")
     records = register.search(first=first, last=last)
+    all_records = {r["id"]: r for r in register.records()}
+    selected_ids = {r["id"] for r in records}
+    for record in records:
+        related = record.get("related_id")
+        if related and related in all_records and related not in selected_ids:
+            selected_ids.add(related)
+            records.append(all_records[related] | {"included_as_related": True})
     destination = new_destination(register.root, destination)
     checksums = {}
 
     def write(name: str, content: bytes):
         target = storage.child(destination, name)
         storage.write_new(target, content)
-        checksums[name] = storage.sha256(target)
+        expected = hashlib.sha256(content).hexdigest()
+        if storage.sha256(target) != expected:
+            raise ArchiveError("Exportmetadaten-Rückleseprüfung fehlgeschlagen")
+        checksums[name] = expected
 
     for record in records:
         files = [record["original_relative"]] + [
@@ -167,6 +182,11 @@ def export_register(
         if storage.sha256(storage.child(destination, name)) != digest:
             raise ArchiveError("Export-Rückleseprüfung fehlgeschlagen")
     storage.write_new(destination / "checksums.json", storage.canonical(checksums))
+    if (
+        json.loads((destination / "checksums.json").read_text(encoding="utf-8"))
+        != checksums
+    ):
+        raise ArchiveError("Exportprüfsummen-Rückleseprüfung fehlgeschlagen")
     return dict(verified=True, count=len(records), destination=str(destination))
 
 
