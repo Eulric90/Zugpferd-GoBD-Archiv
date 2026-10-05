@@ -30,6 +30,10 @@ der Sticks werden die Archivordner ebenfalls geschützt. Dateien/Eigentümerrech
 werden sichtbar auf Administrator/Dienst umgestellt; Belegbytes bleiben unverändert.
 Andere Rechner/Administratoren können normale USB-Sticks weiterhin verändern.
 
+Der Container (z.B. `C:\GoBD`) muss ausschließlich das Archiv und dessen Schlüsselordner
+enthalten. Der Installer schützt auch diesen Container gegen Umbenennen/Löschen
+durch Bediener und lehnt gemeinsame Ordner mit fremden Daten ab.
+
 Der Schlüssel liegt separat in `C:\GoBD\.Archiv-Schluessel`; Bediener erhalten dort
 keinen Zugriff. Dienstkonfiguration/Staging liegen unter `ProgramData\ZugpferdArchiv`.
 Keinen Schlüssel ungeschützt auf A/B oder in den Rechnungsbestand legen.
@@ -38,7 +42,9 @@ Keinen Schlüssel ungeschützt auf A/B oder in den Rechnungsbestand legen.
    `C:\GoBD\Archiv` als Grundordner wählen. `Betrieb einrichten` ausfüllen, digitale
    Umstellung und Altbestand festlegen. `Jahresserie einrichten`: bisherigen
    Trennzeichen- und Nummernstand bestätigen, nicht mitten im Jahr bei 0001 beginnen.
-6. `Schlüssel geschützt sichern`: starkes separates Passwort verwenden. Verschlüsselte
+6. `Schlüssel geschützt sichern`: Windows-Adminabfrage bestätigen. Das Passwort wird
+   verdeckt im Admin-Konsolenfenster eingegeben; Bediener dürfen den privaten
+   Signaturschlüssel auch über den Dienst nicht exportieren. Starkes separates Passwort verwenden. Verschlüsselte
    PEM-Datei und zugehörige `.public-key.txt` getrennt sicher verwahren; Referenzschlüssel
    zusätzlich unabhängig ausdrucken/verwahren. Passwort nicht im Rechnungsordner speichern.
 7. Verfahrensdokumentation prüfen, betrieblich freigeben und auf A/B sichern.

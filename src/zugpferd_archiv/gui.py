@@ -438,7 +438,7 @@ class MainWindow(QMainWindow):
         self.launch(lambda progress: Register(root).business_setup(), show)
 
     def backup_key(self):
-        from .service import protected, request
+        from .service import protected
         from .snapshots import export_key
         import base64
         from . import storage
@@ -473,25 +473,18 @@ class MainWindow(QMainWindow):
             return
 
         def save(progress):
-            if protected(root):
-                content = base64.b64decode(
-                    request(dict(operation="export_key", password=password))
+            folder = root.parent / ("." + root.name + "-Schluessel")
+            stands = root / "Archivverwaltung/Sicherungsstaende"
+            if (
+                stands.exists()
+                and any(stands.iterdir())
+                and not (folder / "signing-key.pem").is_file()
+            ):
+                raise ArchiveError(
+                    "Vorhandenen Signaturschlüssel wiederherstellen; keinen Ersatzschlüssel erzeugen"
                 )
-                storage.write_new(Path(filename), content)
-                from cryptography.hazmat.primitives import serialization
-
-                key = serialization.load_pem_private_key(
-                    content, password=password.encode()
-                )
-                public = base64.b64encode(
-                    key.public_key().public_bytes(
-                        serialization.Encoding.Raw, serialization.PublicFormat.Raw
-                    )
-                )
-                storage.write_new(Path(filename + ".public-key.txt"), public + b"\n")
-                return storage.sha256(Path(filename))
             digest = export_key(
-                root.parent / ("." + root.name + "-Schluessel"),
+                folder,
                 Path(filename),
                 password,
             )

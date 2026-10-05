@@ -17,10 +17,11 @@ from . import storage
 def actor_identity() -> str:
     if os.name == "nt":
         import win32api
+        import win32con
         import win32security
 
         token = win32security.OpenProcessToken(
-            win32api.GetCurrentProcess(), win32security.TOKEN_QUERY
+            win32api.GetCurrentProcess(), win32con.TOKEN_QUERY
         )
         try:
             return win32security.ConvertSidToStringSid(

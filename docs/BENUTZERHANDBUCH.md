@@ -175,3 +175,28 @@ erfolgreiche Wiederaufnahme kann darauf mit einer Warnung hinweisen. Die Vollpr�
 meldet ausstehende Fassungen, fehlende/veränderte Dokumentationsdateien,
 unbekannte Dateien und verbliebene temporäre Kopien. Eine unvollständige
 Dokumentationsfassung blockiert auch neue Sicherungen, bis sie abgeschlossen ist.
+
+## Rechnungsbetrieb unter Windows 11
+
+Vor dem Livebetrieb das geschützte Profil nach [WINDOWS_EINRICHTUNG.md](WINDOWS_EINRICHTUNG.md)
+einrichten und mit beiden persönlichen Konten abnehmen. `Betrieb einrichten` erfasst
+Firmendaten, Zuständigkeiten, Umstellung und den vereinbarten Sicherungsrhythmus.
+Bestehenden Nummernstand bestätigen; Nummernreservierungen bleiben nach Abbruch verbraucht.
+
+`Eingangsrechnung übernehmen` und `Ausgangsrechnung übernehmen` prüfen eine ausgewählte
+Datei oder einen EML-Anhang, zeigen erkannte Daten und verlangen die sachliche Kontrolle.
+`Belegregister / Aufgaben` zeigt offene Prüfungen, Versand, A/B-Sicherungen und Nummernlücken.
+Begründete Metadatenkorrekturen erhalten den bisherigen Wert. Eine Berichtigung/Storno ist
+eine neue Originaldatei mit Beziehung zum ursprünglichen Beleg. Betragskorrekturen sind
+nur für manuell erfasste Angaben zulässig; führende XML-Daten dürfen nicht abweichen.
+
+PDF24 erstellt die Rechnung. Den freigegebenen unveränderten Anhang persönlich versenden;
+anschließend Datum, Empfänger und identischen Anhang/gesendete EML bestätigen.
+Die vollständigen Schritte stehen in [ARBEITSANLEITUNG_RECHNUNGEN.md](ARBEITSANLEITUNG_RECHNUNGEN.md)
+und in der druckbaren Anleitung der Anwendung.
+
+Der Registerexport filtert nach Rechnungsdatum und enthält unveränderte Originale,
+lesbare XML-HTML-Ansichten, CSV/JSON, Historie und Prüf-/Dokumentationsnachweise.
+`index.html` und Rechnungen können für den Steuerberaterordner gedruckt werden.
+Elektronische Originale bleiben daneben erhalten. Der bestehende Quellenjahr-/Archivdatumexport
+ist eine separate Funktion. Exporte überschreiben keine vorhandenen Zielordner.

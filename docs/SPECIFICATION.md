@@ -102,3 +102,36 @@ UI/docs must use wording such as "GoBD-unterstützende Archivierung". Do not adv
 - no silent repair of integrity failures
 - no dependency on cloud services
 - no requirement for administrator rights except where Windows itself requires them for the selected path
+
+## 13. Approved business workflow extension
+The original security invariants remain in force. The approved operating profile is
+one Windows 11 PC, personal standard accounts, PDF24 ZUGFeRD invoices with VAT,
+manual portal/Thunderbird transport, local originals and two independent USB backups.
+
+- Provide incoming and outgoing file/EML assistants, readable PDF/XML, explicit human
+  review and cancellation before committing. Retain invalid incoming originals with
+  open findings; block approval of new outgoing invoices with critical findings.
+- Validate CII/UBL offline using bundled, versioned EN16931/XRechnung rules and schemas.
+  Apply bounded parsing without external entities, network retrieval or attachment execution.
+- Keep immutable originals and a hash-chained register including real Windows caller SID,
+  provenance, dates, original hashes, corrections, relationships and actual sending confirmation.
+  XML leads structured invoice fields; metadata must not silently contradict it.
+- Confirm the existing year/number baseline. Reserve year plus four-digit invoice numbers
+  durably, never reuse reservations or original outgoing numbers, explain gaps and stop at 9999.
+- Offer versioned company setup, printable working instructions and generated, reviewed,
+  versioned procedure documentation. Preserve pre-extension document rendering byte-for-byte.
+- Install an explicitly configured local Windows writer service as administrator. Operators
+  may read the archive, but have no direct modification/deletion or signing-key access.
+  Authenticate local pipe callers and verify the server belongs to the installed SCM service.
+  Restrict private-key backup to administrators and encrypted, separately stored backups.
+- Replicate and re-read signed complete recovery checkpoints on both configured media;
+  failure remains incomplete. Resume signed pending intent without replacing conflicted objects.
+  Missing/corrupt committed objects are integrity errors, never silently repaired.
+- Provide neutral invoice-date exports including originals, readable XML, CSV/JSON history,
+  documentation/proofs and SHA-256; preserve the separate legacy archive-date/year export.
+- Restore into a new isolated inspection folder, using an independently retained public key.
+  Restore permissions/service installation separately before any live operation.
+- Propose document-specific retention periods and holds; provide no archive-delete function.
+
+Hardware acceptance and actual organizational controls remain necessary. The app does
+not perform complete bookkeeping, automatic mailing or legal certification.

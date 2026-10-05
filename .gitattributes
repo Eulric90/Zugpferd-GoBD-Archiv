@@ -1,0 +1,2 @@
+# These regression fixtures include recorded SHA-256 values; preserve every byte.
+tests/fixtures/legacy-documentation/* -text

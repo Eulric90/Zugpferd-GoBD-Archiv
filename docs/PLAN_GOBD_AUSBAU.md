@@ -1,7 +1,9 @@
 # Gesamtplan: GoBD-unterstützender Rechnungs- und Archivierungsprozess
 
-Planungsstand: 05.10.2026. Dieser Plan beschreibt den nächsten vollständigen
-Umsetzungsauftrag; er implementiert noch keine neuen Funktionen. Er ist kein
+Umsetzungsstand: 05.10.2026. Dieser Plan beschreibt den genehmigten Funktionsumfang
+des Ausbaus. Die zugehörigen Assistenten, das Register, Offline-Prüfung, Windows-
+Schreibdienst, vollständige signierte Sicherungsstände und Exporte sind implementiert.
+Einrichtung und Geräteabnahme erfolgen nach `WINDOWS_EINRICHTUNG.md`. Dies ist kein
 Nachweis einer gesetzlichen Zertifizierung. Für die praktische GoBD-Konformität
 müssen Anwendung, tatsächlich umgesetzte Abläufe und betriebliche Kontrollen
 zusammenpassen.

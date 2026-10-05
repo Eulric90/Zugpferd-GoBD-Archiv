@@ -44,3 +44,49 @@ def test_snapshot_manifest_tamper_and_pinned_key(tmp_path):
     path.write_text(json.dumps(value))
     with pytest.raises(ArchiveError, match="signatur"):
         restore_snapshot(snapshot, tmp_path / "bad2")
+
+
+def test_signed_checkpoint_detects_current_immutable_metadata_change(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "metadata.json").write_bytes(b'{"original":true}')
+    snapshot = create_snapshot(root, tmp_path / ".root-Schluessel")
+    a, b = tmp_path / "A", tmp_path / "B"
+    a.mkdir()
+    b.mkdir()
+    replicate_snapshot(snapshot, a, b)
+    (root / "metadata.json").write_bytes(b'{"forged":true}')
+    with pytest.raises(ArchiveError, match="verändert|widerspricht"):
+        audit_snapshots(root, a, b)
+
+
+def test_encrypted_key_recovery_requires_password_reference_and_empty_target(tmp_path):
+    import base64
+    from cryptography.hazmat.primitives import serialization
+    from zugpferd_archiv.snapshots import export_key, restore_key, signing_key
+
+    keys = tmp_path / "keys"
+    backup = tmp_path / "encrypted.pem"
+    key = signing_key(keys)
+    public = base64.b64encode(
+        key.public_key().public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw
+        )
+    ).decode()
+    export_key(keys, backup, "separate-long-password")
+    assert b"BEGIN ENCRYPTED PRIVATE KEY" in backup.read_bytes()
+    with pytest.raises(ValueError):
+        restore_key(tmp_path / "wrong-password", backup, "wrong", public)
+    with pytest.raises(ArchiveError, match="Referenz"):
+        restore_key(
+            tmp_path / "wrong-reference", backup, "separate-long-password", "wrong"
+        )
+    recovered = tmp_path / "recovered"
+    restore_key(recovered, backup, "separate-long-password", public)
+    assert signing_key(recovered).public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    ) == key.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    )
+    with pytest.raises(ArchiveError, match="überschrieben"):
+        restore_key(recovered, backup, "separate-long-password", public)

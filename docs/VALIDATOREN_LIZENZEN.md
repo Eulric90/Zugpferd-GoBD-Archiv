@@ -27,5 +27,6 @@ Quellen zur Anwendung und Änderungen an der Integration bleiben im Repository
 verfügbar; Drittanbieter-Bibliotheken werden nicht verändert.
 
 Sicherheitsgrenzen: XML ohne DTD, externe Entitäten oder Netzabrufe; Dateilimit
-64 MiB, XML 8 MiB. Anhänge werden nicht ausgeführt. Die Prüfung enthält keine
+64 MiB, XML 8 MiB. Parser und Regelprüfung laufen in einem begrenzten Unterprozess
+(30 Sekunden, 1 GiB Speicher, unter Windows Job Object). Anhänge werden nicht ausgeführt. Die Prüfung enthält keine
 automatische vollständige semantische Gleichheitsprüfung beliebiger PDF-Layouts.

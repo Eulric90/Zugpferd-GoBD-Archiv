@@ -66,3 +66,25 @@ Objekte werden geprüft und nicht still repariert. Vollprüfung/A/B-Vergleich un
 Sicherungen prüfen zusätzlich die Dokumentationshistorie. Tests decken auch
 Assistent-Abbruch, GUI-Speicherung, Vorbelegung, Pflichtfelder/Freigabe,
 Versionierung, Unterbrechung, Wiederaufnahme und Manipulation ab.
+
+## Register, Schreibdienst und vollständige Sicherungen
+
+`register.py` trennt Originalobjekte von nachvollziehbaren Verwaltungsereignissen.
+`invoice.py` und `inspection.py` validieren offline in einem begrenzten Unterprozess;
+`xml_view.py` rendert ausschließlich maskierte Daten. `invoice_wizard.py`,
+`setup_wizard.py` und `register_view.py` führen durch Übernahme, Freigabe und Kontrolle.
+`workflow.py` exportiert geprüfte Kopien und stellt in neue Prüfordner wieder her.
+
+`snapshots.py` schreibt vor dem Kopieren eine signierte Absicht. Abgebrochene neue
+Stände können mit denselben Objekten fortgesetzt werden; ein bereits abgeschlossener
+Stand darf bei fehlenden/manipulierten Objekten nicht automatisch repariert werden.
+Der private Ed25519-Schlüssel liegt außerhalb des Archivs. `protection.py` prüft
+Windows-DACLs, Eigentümer und Löschrechte der übergeordneten Ordner.
+
+Der Windows-Build führt neben pytest einen nativen Starttest der eingefrorenen GUI
+mit Rechnungs-/Dokumentationsassistent und Offline-Regeln aus. Ein isolierter zusätzlicher
+Test installiert den eingefrorenen SCM-Dienst und ein temporäres echtes Standardkonto:
+Originaländerung/-löschung, Schlüsselzugriff und Schlüssel-API müssen verweigert werden;
+Nummernreservierung und protokollierte tatsächliche SID müssen funktionieren.
+Testkonto, Testdienst und Testbestand werden anschließend entfernt. Ein bestehender
+Dienst/eine bestehende Konfiguration verhindern diesen Test.
