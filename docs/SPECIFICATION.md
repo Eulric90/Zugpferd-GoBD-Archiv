@@ -102,4 +102,3 @@ UI/docs must use wording such as "GoBD-unterstützende Archivierung". Do not adv
 - no silent repair of integrity failures
 - no dependency on cloud services
 - no requirement for administrator rights except where Windows itself requires them for the selected path
-

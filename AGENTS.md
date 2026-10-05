@@ -29,4 +29,3 @@ Build a conservative Windows desktop application for redundant, integrity-verifi
 Use small modules, type hints, explicit exceptions and deterministic tests. Filesystem tests must use temporary directories. Abstract removable-drive discovery so it can be mocked outside Windows.
 
 Before merging a feature, add tests for failure cases, especially hash mismatch, duplicate/conflicting content, missing media and interrupted copy.
-
