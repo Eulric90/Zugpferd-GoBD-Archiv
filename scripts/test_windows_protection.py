@@ -194,6 +194,11 @@ def main():
             )
             win32security.ImpersonateLoggedOnUser(token)
             try:
+                from zugpferd_archiv.media import physical_device
+
+                assert physical_device(root), (
+                    "Physical device query must work without administrator rights"
+                )
                 for operation in (
                     lambda: original.write_bytes(b"forged"),
                     lambda: original.unlink(),

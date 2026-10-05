@@ -3,6 +3,10 @@ Set-Location (Split-Path $PSScriptRoot -Parent)
 if ([Environment]::OSVersion.Platform -ne 'Win32NT') {
     throw 'Windows-Build muss auf Windows ausgeführt werden (PyInstaller ist kein Cross-Compiler).'
 }
+$tokens = $null
+$parseErrors = $null
+[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Install-ProtectedArchive.ps1'),[ref]$tokens,[ref]$parseErrors) | Out-Null
+if ($parseErrors.Count -gt 0) { throw ('Installer-Syntaxfehler: ' + ($parseErrors | Out-String)) }
 python -m pip install -r requirements-build.txt
 if ($LASTEXITCODE -ne 0) { throw 'Abhängigkeiten konnten nicht installiert werden' }
 python -m pip install --no-deps --no-build-isolation -e .
