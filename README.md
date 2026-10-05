@@ -34,3 +34,24 @@ Windows-Anwendung zur GoBD-unterstützenden Archivierung elektronischer Ein- und
 7. **Trennung:** Arbeitsablage auf C: und Archivmedien sind getrennte Rollen.
 
 Siehe `docs/SPECIFICATION.md` und `AGENTS.md` für die verbindlichen Anforderungen.
+
+
+## V1.0 starten
+
+Das portable Windows-x64-Paket wird im [Windows-Build](https://github.com/Eulric90/Zugpferd-GoBD-Archiv/actions/workflows/windows.yml)
+als Artefakt `ZugpferdArchiv-1.0.0-Windows-x64` bereitgestellt. Das enthaltene ZIP
+vollständig entpacken und `ZugpferdArchiv.exe` neben dem `_internal`-Ordner starten.
+Python muss auf dem Zielrechner nicht installiert sein.
+
+Die V1 umfasst die Desktop-Oberfläche, registrierte A/B-Medien, verifizierte
+Originalkopien, Konflikterkennung, verkettete Journale, Integritätsprüfung,
+A/B-Vergleich, TXT-/JSON-Berichte und einen nichtdestruktiven Jahres-/Datums-Export.
+Veränderte Quellen werden sicher abgelehnt; bestehende Archivhistorie wird erhalten.
+
+- [Bedienung und Fehlerbehandlung](docs/BENUTZERHANDBUCH.md)
+- [Betriebliche Verfahrensdokumentation](docs/VERFAHRENSDOKUMENTATION.md)
+- [Entwicklung, Tests und Windows-Packaging](docs/ENTWICKLUNG.md)
+
+Für den Start aus dem Quellcode: Python 3.12+, `python -m pip install -e .`,
+anschließend `python -m zugpferd_archiv`. Der Windows-Build verwendet
+`scripts/build_windows.ps1`; er prüft die Tests und startet auch die gebaute EXE.

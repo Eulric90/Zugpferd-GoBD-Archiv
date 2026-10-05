@@ -1,0 +1,121 @@
+# V1.0 unter Windows verwenden
+
+## Portable Anwendung starten
+
+Voraussetzung: Windows 10/11 (64 Bit). Das Windows-Build-Artefakt enthält
+`ZugpferdArchiv-1.0.0-Windows-x64.zip` und die zugehörige `.zip.sha256`.
+Das ZIP vollständig in einen beschreibbaren Ordner entpacken und
+`ZugpferdArchiv/ZugpferdArchiv.exe` starten. Der mitgelieferte `_internal`-Ordner
+muss neben der EXE bleiben. Python muss auf dem Zielrechner nicht installiert sein.
+Die Anwendung benötigt im Betrieb keine Cloud-Verbindung. Es wird keine
+Codesignatur oder rechtliche Zertifizierung behauptet.
+
+Den Download-Hash kann PowerShell mit
+`Get-FileHash .\ZugpferdArchiv-1.0.0-Windows-x64.zip -Algorithm SHA256` prüfen.
+
+## Einrichten
+
+1. Arbeitsordner auswählen oder `C:\Rechnungen anlegen` drücken. Vorhandene
+   Inhalte bleiben erhalten. `Struktur anlegen` erstellt auch bei einem frei
+   gewählten Arbeitsordner die Unterordner.
+2. Rechnungen unverändert nach `Eingang/<Jahr>/...` bzw. `Ausgang/<Jahr>/...`
+   ablegen. Unterordner sind erlaubt. Alle regulären Dateien werden archiviert,
+   auch Begleitdateien; es erfolgt keine Konvertierung oder Rechnungsvalidierung.
+3. Zwei verschiedene physische USB-Medien anschließen. Beide müssen genügend
+   freien Speicher haben. USB-Festplatten können in Windows als feste Laufwerke
+   erscheinen und sind deshalb ebenfalls auswählbar.
+4. Medium A auswählen und als A registrieren. Medium B auswählen und als B
+   registrieren, während A ausgewählt ist. B übernimmt die Archiv-ID von A.
+5. `A/B zuordnen und speichern` drücken. Die Konfiguration speichert die
+   Kennungen, nicht die Laufwerksbuchstaben. Nach einem Wechsel der Buchstaben
+   `Medien neu suchen` drücken; registrierte Medien werden anhand der Kennungen
+   wieder zugeordnet. Ein fehlendes oder unerwartetes Medium blockiert den Lauf.
+
+Arbeitsablage und Archivmedien müssen getrennt sein. Unter Windows dürfen
+A und B nicht zwei Ordner desselben Volumes sein; die Arbeitsablage darf nicht
+auf einem der Archivvolumes liegen. Volume-Serienkennung/Dateisystem ergänzt
+Archiv-ID, Rolle und Medien-UUID. Bitweise geklonte Kennungen sind kein Beweis
+für unabhängige Hardware; zwei separat registrierte physische Medien verwenden.
+
+## Sichern und prüfen
+
+`Sichern auf A und B` prüft zuerst die vorhandene Archivhistorie. Neue Dateien
+werden auf beiden Medien kopiert, geflusht und vom jeweiligen Ziel zurückgelesen.
+Identische bereits archivierte Dateien werden geprüft und nicht neu geschrieben.
+Ein Lauf wird erst nach der A/B-Verifikation als erfolgreich angezeigt. Auch eine
+Sicherung ohne neue Dateien prüft die gesamte bestehende Historie.
+
+Geänderte Quellen, widersprüchliche Ziele, fehlende archivierte Objekte,
+ungültige Journal-Ketten und falsche Medien blockieren neue Archivschreibvorgänge.
+Quellen und bestehende Archivobjekte bleiben erhalten. Geänderte Quellen werden
+in V1 **nicht** automatisch als neue Version archiviert. Der Konflikt muss unter
+erhaltener Historie organisatorisch geklärt werden.
+
+`Vollständige Integritätsprüfung` und `A/B vergleichen` lesen alle erwarteten
+Originale, prüfen SHA-256, Metadaten, Medienkennungen, Journal-Ketten und A/B-Gleichheit.
+Fehlende, veränderte, unerwartete und widersprüchliche Objekte werden separat
+gezählt. Keine der Prüfungen repariert Dateien automatisch.
+
+Die Oberfläche bleibt während längerer Vorgänge bedienbar; Änderungen an der
+Konfiguration und parallele Archivoperationen sind dabei gesperrt. Fenster erst
+nach Abschluss schließen, anschließend Medien über Windows sicher auswerfen.
+
+## Berichte und Export
+
+Jeder Lauf schreibt einen deutschen Textbericht und JSON unter
+`Archivverwaltung/Pruefberichte`. Auf korrekt zugeordneten Medien werden ebenfalls
+Berichte abgelegt. Das lokale Laufjournal liegt unter
+`Archivverwaltung/Protokolle/operations.jsonl`. Ein fehlgeschlagener Lauf erscheint
+nicht als vollständige letzte Sicherung. Die Oberfläche zeigt Zeit und Dateizahlen.
+
+Für einen Prüfexport den Bereich der **Jahre in der Quellablage** einstellen.
+Optional zusätzlich nach **Archivierungsdatum in UTC** filtern; dieses Datum ist
+nicht das Rechnungsdatum. Der ausgewählte Bereich ist einschließlich beider
+Grenzen. V1 interpretiert keine Rechnungsinhalte oder PDF/XML-Datumsfelder.
+
+`Prüfexport erstellen` kopiert nach einer vollständigen A/B-Prüfung in einen neuen
+Ordner unter dem gewählten Exportziel. Er enthält `Originale/`, `index.json` mit
+Originalpfaden und SHA-256 sowie einen Prüfbericht. Bestehende Exportordner werden
+nicht überschrieben. Der Export verschiebt oder löscht weder Quellen noch Archive.
+Bei einem Kopierfehler kann ein unvollständiger Exportordner mit erkennbaren
+Temporärdateien zurückbleiben; maßgeblich ist der fehlgeschlagene lokale Bericht.
+
+## Unterbrechungen und Fehlerbehandlung
+
+- Dateien mit `.partial-<UUID>` sind unterbrochene temporäre Kopien, keine
+  archivierten Originale. Ein neuer Lauf verwendet einen frischen temporären Namen.
+  Alte temporäre Dateien bleiben als Belege erhalten, die Sicherung weist darauf
+  mit einer Warnung hin und die vollständige Prüfung meldet sie als Unterbrechung.
+- Eine nach einem Abbruch vollständig veröffentlichte, aber noch nicht im Manifest
+  verzeichnete Datei kann nur dann übernommen werden, wenn die noch vorhandene
+  Quelle identisch ist und beide Medien sonst konsistent sind. Diese Übernahme
+  schreibt einen neuen Manifest- und Journal-Eintrag, ohne das Original zu ersetzen.
+- Ein bereits auf A vollständig verzeichnetes Objekt kann nach Ausfall von B beim
+  nächsten Lauf auf B ergänzt werden, solange die Quelle identisch und A unverletzt
+  ist. Fehlt die Quelle, bleibt die Replikation unvollständig und der Lauf schlägt fehl.
+- Ein Abbruch zwischen Manifest- und Journal-Anhang erzeugt einen Widerspruch.
+  V1 blockiert dann weitere Schreibvorgänge und verlangt eine manuelle Prüfung.
+  Es gibt keine automatische Rekonstruktion oder stille Reparatur.
+- `.zugpferd-operation.lock` verhindert konkurrierende Lauf-/Journalschreibvorgänge.
+  Nach einem harten Prozessabbruch kann die Sperrdatei verbleiben. Erst nach
+  Sicherstellung, dass kein Prozess mehr arbeitet, und nach dokumentierter Prüfung
+  darf ein Verantwortlicher ausschließlich diese Sperrdatei manuell entfernen.
+  Keine Rechnung, Manifest- oder Journaldatei dafür löschen oder bearbeiten.
+
+## Sicherheitsgrenzen
+
+SHA-256 und verkettete Journale unterstützen das Erkennen von Veränderungen.
+Eine Hash-Kette ist weder WORM-Speicher noch ein qualifizierter Zeitstempel.
+Wer Originale und alle Metadaten einschließlich der Ketten konsistent neu schreibt
+oder das Kettenende samt zugehörigem Manifest kürzt, kann durch diese Anwendung
+allein nicht sicher erkannt werden. Externe Anker, Zugriffsrechte, getrennte
+Aufbewahrung und regelmäßige dokumentierte Prüfungen gehören zum Betrieb.
+
+Die Datenträger dürfen während eines Laufs nicht von anderen Prozessen verändert
+werden. Die Sperren koordinieren diese Anwendung, nicht beliebige Fremdsoftware.
+Symlinks und Windows-Reparse-Punkte werden abgelehnt. Ein adversarialer
+Administrator oder ein defekter Controller wird nicht durch Anwendungscode
+kontrolliert. Flush und Rückleseprüfung ersetzen keine Hardware-/Stromausfallsicherheit.
+
+Die Software allein garantiert keine GoBD-Konformität; siehe die betriebliche
+Vorlage in `VERFAHRENSDOKUMENTATION.md`.
