@@ -445,3 +445,27 @@ def test_journal_append_lock_rejects_concurrent_writer(tmp_path):
         with pytest.raises(ArchiveError):
             journal.append("test", {})
     assert not journal.path.exists()
+
+
+def test_case_only_source_rename_fails_without_history_rewrite(archive):
+    service, source, a, b, _, _ = archive
+    assert service.backup(a, b).success
+    source.rename(source.with_name("INVOICE.pdf"))
+    result = service.backup(a, b)
+    assert not result.success
+    assert len(service.records(a)) == 1
+
+
+def test_conflicting_destination_has_distinct_report_category(archive):
+    service, source, a, b, _, _ = archive
+    dest = a / "Archive/2026/Eingang/vendor/invoice.pdf"
+    dest.parent.mkdir(parents=True)
+    dest.write_bytes(b"conflicting")
+    report = service.backup(a, b)
+    assert any(item["kind"] == "conflicting" for item in report.exceptions)
+
+
+def test_relative_media_paths_supported(archive, monkeypatch):
+    service, source, a, b, _, _ = archive
+    monkeypatch.chdir(a.parent)
+    assert service.backup(Path("a"), Path("b")).success

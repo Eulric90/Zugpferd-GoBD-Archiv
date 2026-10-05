@@ -232,6 +232,7 @@ class ArchiveService:
         allowed_untracked: dict[str, dict] | None = None,
         ignore_partials: bool = False,
     ) -> None:
+        medium = storage.safe_path(medium)
         expected = {r["archive_relative"]: r for r in records}
         for relative, record in expected.items():
             path = storage.child(medium, relative)
@@ -278,7 +279,11 @@ class ArchiveService:
                     if candidate and storage.sha256(path) == candidate["sha256"]:
                         continue  # Verified orphan from a crash is explicitly journaled during backup.
                     report.issue(
-                        "unexpected", path, "Objekt ohne passenden Manifest-Eintrag"
+                        "conflicting" if candidate else "unexpected",
+                        path,
+                        "Vorhandenes Ziel widerspricht der Quelle; kein Überschreiben"
+                        if candidate
+                        else "Objekt ohne passenden Manifest-Eintrag",
                     )
 
     def _compare_records(
@@ -334,8 +339,19 @@ class ArchiveService:
                 candidates = self._candidates()
                 report.totals["candidates"] = len(candidates)
                 histories = {r["source_relative"]: r for r in ra + rb}
+                case_history = {logical.casefold(): logical for logical in histories}
                 for candidate in candidates:
                     candidate["archive_id"] = report.archive_id
+                    logical = candidate["source_relative"]
+                    if (
+                        logical.casefold() in case_history
+                        and case_history[logical.casefold()] != logical
+                    ):
+                        report.issue(
+                            "conflicting",
+                            logical,
+                            "Schreibweise des archivierten Quellpfads geändert; Historie bleibt erhalten",
+                        )
                     old = histories.get(candidate["source_relative"])
                     if old and (
                         old["sha256"] != candidate["sha256"]
