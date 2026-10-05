@@ -258,7 +258,10 @@ def replicate_snapshot(snapshot: Path, a: Path, b: Path, validate=None) -> None:
             validate()
 
 
-def audit_snapshots(root: Path, a: Path, b: Path, require_equal: bool = True) -> None:
+def audit_snapshots(
+    root: Path, a: Path, b: Path, require_equal: bool = True
+) -> list[dict]:
+    warnings = []
     key_path = root.parent / ("." + root.name + "-Schluessel") / "signing-key.pem"
     local_folder = storage.child(root, FOLDER)
     expected_key = None
@@ -313,6 +316,14 @@ def audit_snapshots(root: Path, a: Path, b: Path, require_equal: bool = True) ->
                     expected_key,
                     allow_missing=not require_equal and snapshot.name not in committed,
                 )
+                warnings.extend(
+                    dict(
+                        kind="interrupted_snapshot",
+                        path=str(snapshot / name),
+                        detail="Unvollständige Arbeitsdatei erhalten; keine abgeschlossene Archivdatei",
+                    )
+                    for name in manifest.get("warnings", [])
+                )
                 ids.add(manifest["id"])
                 local = storage.child(root, FOLDER + "/" + manifest["id"])
                 if not local.is_dir() or storage.sha256(
@@ -322,6 +333,18 @@ def audit_snapshots(root: Path, a: Path, b: Path, require_equal: bool = True) ->
                         "Unabhängiger Sicherungsstand fehlt oder widerspricht lokaler Referenz"
                     )
                 for item in manifest["files"]:
+                    current_path = storage.child(root, item["path"])
+                    if (
+                        not item["path"].endswith(".jsonl")
+                        and item["path"] != ".protected-service.json"
+                    ):
+                        if (
+                            not current_path.is_file()
+                            or storage.sha256(current_path) != item["sha256"]
+                        ):
+                            raise ArchiveError(
+                                "Lokales abgeschlossenes Original/Verwaltungsobjekt fehlt oder verändert"
+                            )
                     if item["path"].endswith(".jsonl"):
                         previous_path = storage.child(
                             snapshot, "Dateien/" + item["path"]
@@ -350,3 +373,4 @@ def audit_snapshots(root: Path, a: Path, b: Path, require_equal: bool = True) ->
             )
     if require_equal and sets[0] != sets[1]:
         raise ArchiveError("A/B-Sicherungsstände unvollständig")
+    return warnings

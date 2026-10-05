@@ -19,10 +19,61 @@ def main() -> int:
     parser.add_argument("--inspection-output", type=Path)
     parser.add_argument("--restore-key", type=Path)
     parser.add_argument("--reference-key", type=Path)
+    parser.add_argument("--backup-key", type=Path)
     parser.add_argument(
         "--smoke-test", action="store_true", help="GUI starten und automatisch beenden"
     )
     args = parser.parse_args()
+    if args.backup_key:
+        import ctypes
+
+        if sys.platform != "win32" or not ctypes.windll.shell32.IsUserAnAdmin():
+            parser.error("Schlüsselsicherung als Windows-Administrator durchführen")
+        if args.root is None:
+            parser.error("--root erforderlich")
+        import json
+        from .windows_service import configuration_path
+
+        config = json.loads(configuration_path().read_text(encoding="utf-8-sig"))
+        if args.root.resolve() != Path(config["root"]).resolve():
+            parser.error(
+                "Schlüsselsicherung muss das eingerichtete Dienstarchiv betreffen"
+            )
+        import getpass
+        import base64
+        from .snapshots import export_key
+        from . import storage
+        from cryptography.hazmat.primitives import serialization
+
+        password = getpass.getpass(
+            "Neues Passwort der Schlüsselsicherung (getrennt verwahren): "
+        )
+        folder = args.root.parent / ("." + args.root.name + "-Schluessel")
+        stands = args.root / "Archivverwaltung/Sicherungsstaende"
+        if (
+            stands.exists()
+            and any(stands.iterdir())
+            and not (folder / "signing-key.pem").is_file()
+        ):
+            raise RuntimeError(
+                "Vorhandenen Abschlussschlüssel wiederherstellen, keinen neuen erzeugen"
+            )
+        export_key(folder, args.backup_key, password)
+        key = serialization.load_pem_private_key(
+            args.backup_key.read_bytes(), password=password.encode()
+        )
+        public = base64.b64encode(
+            key.public_key().public_bytes(
+                serialization.Encoding.Raw, serialization.PublicFormat.Raw
+            )
+        )
+        storage.write_new(
+            Path(str(args.backup_key) + ".public-key.txt"), public + b"\n"
+        )
+        print(
+            "Verschlüsselte Sicherung und öffentlicher Referenzschlüssel erstellt; Passwort und Referenz getrennt verwahren."
+        )
+        return 0
     if args.restore_key:
         import ctypes
 

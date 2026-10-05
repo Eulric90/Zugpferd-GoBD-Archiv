@@ -449,6 +449,20 @@ class MainWindow(QMainWindow):
         )
         if not filename:
             return
+        if protected(root):
+            from .windows_administration import backup_key_as_admin
+
+            self.launch(
+                lambda progress: backup_key_as_admin(root, Path(filename)),
+                lambda completed: QMessageBox.information(
+                    self,
+                    "Admin-Schlüsselsicherung",
+                    "Verschlüsselte Sicherung und öffentlicher Referenzschlüssel erstellt. Passwort und Referenz unabhängig verwahren."
+                    if completed
+                    else "Admin-Schlüsselsicherung abgebrochen; keine neue Sicherung bestätigt.",
+                ),
+            )
+            return
         password, accepted = QInputDialog.getText(
             self,
             "Schlüsselsicherung",

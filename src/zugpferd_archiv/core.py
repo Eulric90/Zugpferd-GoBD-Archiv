@@ -34,6 +34,9 @@ class ArchiveService:
     def __init__(self, root: Path, progress: Callable[[str], None] | None = None):
         self.root = storage.safe_path(root)
         self.progress = progress or (lambda message: None)
+        from .register import actor_identity
+
+        self.actor = actor_identity()
 
     def setup(self, year: int | None = None) -> None:
         year = year or date.today().year
@@ -315,6 +318,7 @@ class ArchiveService:
     def _finish(
         self, report: Report, a: Path | None = None, b: Path | None = None
     ) -> Report:
+        report.actor_sid = self.actor
         report.success = not report.exceptions
         folder = storage.child(self.root, "Archivverwaltung/Pruefberichte")
         report.save(folder)
@@ -385,7 +389,9 @@ class ArchiveService:
                     from .snapshots import audit_snapshots
 
                     Register(self.root).records()
-                    audit_snapshots(self.root, a, b, require_equal=False)
+                    report.warnings.extend(
+                        audit_snapshots(self.root, a, b, require_equal=False)
+                    )
                 allowed = {r["archive_relative"]: r for r in candidates}
                 self._inspect(a, ra, report, allowed, ignore_partials=True)
                 self._inspect(b, rb, report, allowed, ignore_partials=True)
@@ -476,9 +482,9 @@ class ArchiveService:
                         replicate_snapshot(
                             snapshot, a, b, lambda: self._pair(a, b, report)
                         )
-                        audit_snapshots(self.root, a, b)
+                        report.warnings.extend(audit_snapshots(self.root, a, b))
                         if not report.exceptions:
-                            Register(self.root)._append(
+                            Register(self.root, actor=self.actor)._append(
                                 "register_backup_verified",
                                 dict(
                                     ids=[
@@ -517,7 +523,8 @@ class ArchiveService:
             from .snapshots import audit_snapshots
 
             Register(self.root).records()
-            audit_snapshots(self.root, a, b)
+            for warning in audit_snapshots(self.root, a, b):
+                report.issue("interrupted_copy", warning)
         self._pair(a, b, report)
         return ra, rb
 

@@ -1,9 +1,8 @@
 # Arbeitsanleitung für Eingangs- und Ausgangsrechnungen
 
-**Planungsfassung für den vorgesehenen Ausbau.** Die hier beschriebenen beiden
-Belegassistenten sind noch nicht in der bestehenden V1 implementiert. Diese
-Anleitung wird bei der Umsetzung mit der Oberfläche abgeglichen und anschließend
-auch in der Anwendung und als druckbare Fassung bereitgestellt.
+Die beiden Belegassistenten sind implementiert. Dieselben Abläufe stehen in der
+Anwendung unter `Arbeitsanleitung` mit Druckfunktion bereit. Vor dem Livebetrieb
+das geschützte Dienstprofil einrichten und die Geräteabnahme durchführen.
 
 PDF24 bleibt das Programm zum Erstellen eurer ZUGFeRD-Rechnungen. Die Archiv-App
 übernimmt die unveränderten Dateien, führt die technischen Schritte aus und fragt
@@ -16,23 +15,23 @@ nur erforderliche betriebliche Angaben und Bestätigungen ab.
    oder die Original-Rechnungsdatei übernehmen. Nicht in ein neues PDF drucken
    und dieses anstelle des elektronischen Originals verwenden.
 2. **Assistent starten:** `Eingangsrechnung übernehmen` anklicken oder Datei auf
-   diese Aktion ziehen. Bei einer Mail mit mehreren Rechnungen die einzelnen
+   die Oberfläche ziehen und die Richtung wählen. Bei einer Mail mit mehreren Rechnungen die einzelnen
    Belege auswählen; relevante Begleitbelege zuordnen.
 3. **Automatische Prüfung abwarten:** Die App liest Rechnungsdaten aus, zeigt
-   XML-basierte Angaben und gegebenenfalls PDF an, prüft das Format und sucht
+   XML-basierte Angaben, prüft das Format und sucht
    bereits übernommene Dateien/Belege. Die Lieferanten-Rechnungsnummer bleibt erhalten.
 4. **Inhalt prüfen:** Stimmen Lieferant, Rechnungsempfänger, Leistung, Datum und
    Beträge mit dem tatsächlichen Geschäftsvorfall überein? Fehlende Registerangaben
    ergänzen. Änderungen an diesen Angaben verändern niemals die Originaldatei.
 5. **Prüfstatus wählen:** Eine nachvollziehbar geprüfte Rechnung freigeben oder
-   bei Fehlern `Klärung erforderlich` wählen. Auch eine fehlerhafte Rechnung
+   bei Fehlern die sachliche Freigabe offenlassen. Kritische Fehler führen zum Status `offen`. Auch eine fehlerhafte Rechnung
    muss mit Original und offenen Punkten erhalten bleiben. Für eine steuerliche
    Frage gegebenenfalls den Steuerberater hinzuziehen.
 6. **Übernehmen:** Zusammenfassung bestätigen. Die App vergibt eine interne Beleg-ID,
    legt das Original am richtigen Ort ab und protokolliert die Angaben und Person.
    Ordner oder Dateinamen müssen nicht von Hand gewählt werden.
-7. **A/B sichern:** Beide zugeordneten Sticks anschließen und die angebotene
-   Sicherung starten. Nur bei verifizierter Speicherung auf beiden Sticks ist
+7. **A/B sichern:** Beide zugeordneten Sticks anschließen und im Assistenten
+   die automatische Sicherung wählen oder anschließend `Sichern auf A und B` starten. Nur bei verifizierter Speicherung auf beiden Sticks ist
    die redundante Sicherung vollständig. Fehlt ein Stick, bleibt die Aufgabe offen.
 8. **Klärungen nachführen:** Antwort, Berichtigung, Storno oder weitere relevante
    Unterlagen dem Beleg zuordnen. Zahlung/Buchungsreferenz kann separat ergänzt
@@ -49,15 +48,15 @@ Ein Ausdruck ist eine Arbeits-/Übergabekopie, kein Ersatz für die erhaltene XM
 2. **In PDF24 erstellen:** Rechnung mit dieser Nummer und den tatsächlichen
    Angaben als ZUGFeRD-Datei speichern. Korrekte strukturierte Daten mit erzeugen.
 3. **Assistent starten:** `Ausgangsrechnung übernehmen` anklicken oder die fertige
-   Datei auf diese Aktion ziehen. Die App liest Nummer, Empfänger und Beträge aus,
+   Datei auf die Oberfläche ziehen und `Ausgang` wählen. Die App liest Nummer, Empfänger und Beträge aus,
    prüft ZUGFeRD und vergleicht die Nummer mit dem Register.
 4. **Prüfen und freigeben:** PDF-/XML-Angaben und Geschäftsvorfall kontrollieren.
    Kritische Fehler zuerst klären. Der Assistent ersetzt weder Pflichtangaben
    durch erfundene Werte noch korrigiert er die PDF eigenmächtig.
 5. **Finale Fassung übernehmen:** Zusammenfassung bestätigen. Die App übernimmt
    die bytegleiche Datei in das geschützte lokale Archiv und den Registervorgang.
-6. **Genau diese Datei versenden:** Die vom Assistenten bereitgestellte finale
-   Versanddatei über das Provider-Portal oder Thunderbird senden. Danach diese
+6. **Genau diese Datei versenden:** Den im Ergebnis angezeigten Originalpfad im
+   Register öffnen und exakt diese Datei über das Provider-Portal oder Thunderbird senden. Danach diese
    Rechnung nicht mehr in PDF24 überschreiben. Die App sendet selbst keine Mail.
 7. **Versand zuordnen:** Datum und Empfänger bestätigen oder die gesendete EML
    dem Vorgang geben. Deren Rechnungsanhang wird gegen die archivierte Datei geprüft.
@@ -66,7 +65,8 @@ Ein Ausdruck ist eine Arbeits-/Übergabekopie, kein Ersatz für die erhaltene XM
    Noch offene Versand- oder Sicherungsschritte bleiben im Aufgabenbereich sichtbar.
 
 Ist eine Rechnung schon versandt, den ausdrücklich vorgesehenen Weg
-`Bereits versandte Rechnung übernehmen` nutzen. Er dokumentiert das tatsächliche
+die Option `Bereits versandter Altbeleg / Papierbestand` im Assistenten nutzen.
+Anschließend das tatsächliche Versanddatum im Register bestätigen. Dieser Weg dokumentiert das tatsächliche
 Versanddatum und den heutigen Import; er behauptet keine rückwirkende Archivierung.
 
 ## Storno und Korrektur
@@ -74,7 +74,8 @@ Versanddatum und den heutigen Import; er behauptet keine rückwirkende Archivier
 - Ursprüngliche Rechnung behalten. Eine inhaltlich abweichende Datei ist kein
   erlaubtes Überschreiben der alten Rechnung.
 - Storno/Berichtigung im betrieblich richtigen Verfahren erstellen, dann als neuen
-  Beleg übernehmen und im Assistenten mit der ursprünglichen Rechnung verknüpfen.
+   Beleg übernehmen und im Assistenten die ursprüngliche Beleg-ID unter `related_id`
+   angeben oder anschließend im Register begründet verknüpfen.
 - Grund, Datum und zuständige Person dokumentieren. Die App erzeugt keine
   steuerlich ungeprüfte Storno-Rechnung und löscht keine Historie.
 - Nummernlücken und verworfene Reservierungen erklären; alte Nummern nicht

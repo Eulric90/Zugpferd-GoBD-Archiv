@@ -64,3 +64,24 @@ Er speichert versionierte Fassungen als druckbare HTML-Datei, Markdown und JSON
 lokal sowie verifiziert auf A/B. Frühere Fassungen bleiben erhalten. Entwürfe und
 betriebliche Freigaben werden ausdrücklich unterschieden; die Angaben müssen
 vom Betreiber geprüft und in der Praxis umgesetzt werden.
+
+## Erweiterte Rechnungsabläufe
+
+- Eingangs-/Ausgangsassistent für Datei oder EML, sichere Offline-Prüfung von CII/UBL,
+  ZUGFeRD/Factur-X und XRechnung, sachliche Freigabe und automatische A/B-Sicherung.
+- Belegregister mit dauerhaften Jahresnummernreservierungen, Korrekturhistorie,
+  Storno-/Berichtigungsbezügen, Versandnachweis mit Anhang-Hashvergleich und offenen Aufgaben.
+- Persönliche Windows-SIDs, geschützter lokaler Schreibdienst, NTFS-Leserechte,
+  signierte vollständige Sicherungsstände und verschlüsselte Schlüsselsicherung.
+- Registersuche, Fristvorschläge/Sperrvermerke, neutraler CSV/JSON-/Originalexport,
+  druckbare Arbeitsanleitung und Wiederherstellung in einem neuen Ordner.
+
+Das ZIP enthält `ZugpferdArchiv.exe`, `ZugpferdArchivService.exe`, gemeinsame
+Bibliotheken und `Install-ProtectedArchive.ps1`. Die portable Oberfläche eignet
+sich für Tests; für den geschützten Betrieb die einmalige Admin-Einrichtung nutzen.
+Kein Datenträger wird automatisch formatiert und keine Rechnung gelöscht.
+
+- [Arbeitsanleitung für euren Betrieb](docs/ARBEITSANLEITUNG_RECHNUNGEN.md)
+- [Windows-Einrichtung, Geräteabnahme und Wiederherstellung](docs/WINDOWS_EINRICHTUNG.md)
+- [Register- und Sicherungsformate](docs/DATENFORMATE.md)
+- [Offline-Prüfsätze und Lizenzen](docs/VALIDATOREN_LIZENZEN.md)

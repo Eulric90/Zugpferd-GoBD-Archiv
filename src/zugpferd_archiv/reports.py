@@ -15,6 +15,7 @@ from .storage import canonical
 class Report:
     operation: str
     archive_id: str = ""
+    actor_sid: str = ""
     medium_ids: dict[str, str] = field(default_factory=dict)
     timestamp: str = field(default_factory=now)
     success: bool = False
@@ -54,6 +55,7 @@ class Report:
             f"Vorgang: {self.operation}",
             f"Zeitpunkt (UTC): {self.timestamp}",
             f"Archiv: {self.archive_id}",
+            f"Bediener (Windows-SID): {self.actor_sid}",
             f"Medien: {self.medium_ids}",
             "Ergebnis: "
             + ("ERFOLGREICH" if self.success else "FEHLER / UNVOLLSTÄNDIG"),

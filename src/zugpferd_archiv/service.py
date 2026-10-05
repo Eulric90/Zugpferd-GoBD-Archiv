@@ -115,6 +115,8 @@ class Dispatcher:
         }
         if operation in register_ops:
             args = request.get("args", [])
+            if not isinstance(args, list) or len(args) != register_ops[operation]:
+                raise ArchiveError("Ungültige Anzahl von Dienstargumenten")
             method = getattr(Register(self.root, actor=actor), operation)
             try:
                 inspect.signature(method).bind(*args)
@@ -162,6 +164,7 @@ class Dispatcher:
             )
             return base64.b64encode(data).decode()
         service = ArchiveService(self.root)
+        service.actor = actor
         if operation in ("backup", "check", "compare"):
             args = request.get("args", [])
             if len(args) != 2:
@@ -484,7 +487,16 @@ def serve(config: dict, stop=None):
                     group = win32security.ConvertStringSidToSid(
                         config["operator_group_sid"]
                     )
-                    if not win32security.CheckTokenMembership(token, group):
+                    is_key_export = json.loads(raw).get("operation") == "export_key"
+                    if is_key_export and not win32security.CheckTokenMembership(
+                        token, win32security.ConvertStringSidToSid("S-1-5-32-544")
+                    ):
+                        raise ArchiveError(
+                            "Schlüsselsicherung nur als erhöhter Windows-Administrator"
+                        )
+                    if not is_key_export and not win32security.CheckTokenMembership(
+                        token, group
+                    ):
                         raise ArchiveError(
                             "Windows-Konto ist kein freigegebener Archivbediener"
                         )
@@ -493,13 +505,23 @@ def serve(config: dict, stop=None):
             finally:
                 win32security.RevertToSelf()
             try:
+                from .protection import audit_windows_protection
+
+                audit_windows_protection(config)
                 result = dispatch.call(json.loads(raw), actor)
                 response = dict(ok=True, result=result)
             except Exception as exc:
                 response = dict(ok=False, error=f"{type(exc).__name__}: {exc}")
             win32file.WriteFile(pipe, storage.canonical(response))
             win32file.FlushFileBuffers(pipe)
-        except (pywintypes.error, ArchiveError, ValueError):
+        except ArchiveError as exc:
+            try:
+                win32file.WriteFile(
+                    pipe, storage.canonical(dict(ok=False, error=str(exc)))
+                )
+            except pywintypes.error:
+                pass
+        except (pywintypes.error, ValueError):
             pass
         finally:
             try:

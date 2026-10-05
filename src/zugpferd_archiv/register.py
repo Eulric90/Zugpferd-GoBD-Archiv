@@ -279,6 +279,33 @@ class Register:
     def ingest(self, source: Path, fields: dict) -> dict:
         source = storage.safe_path(source)
         fields = dict(fields)
+        allowed_fields = {
+            "direction",
+            "number",
+            "invoice_date",
+            "partner",
+            "currency",
+            "net",
+            "tax",
+            "gross",
+            "source",
+            "reviewed",
+            "historical",
+            "critical_errors",
+            "format",
+            "profile",
+            "validator_version",
+            "tax_breakdown",
+            "document_type",
+            "related_id",
+            "received_at",
+            "service_period",
+            "reference",
+            "payment_reference",
+            "_source_metadata",
+        }
+        if set(fields) - allowed_fields:
+            raise ArchiveError("Unzulässige Belegfelder")
         source_metadata = fields.pop("_source_metadata", None)
         from .inspection import analyze_bounded
 

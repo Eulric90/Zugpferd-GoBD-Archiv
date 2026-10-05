@@ -13,6 +13,7 @@ from pathlib import Path
 
 import win32con
 import win32net
+import win32netcon
 import win32security
 import win32service
 
@@ -69,7 +70,7 @@ def main():
                 priv=1,
                 home_dir="",
                 comment="Temporary CI standard user",
-                flags=win32con.UF_SCRIPT | win32con.UF_DONT_EXPIRE_PASSWD,
+                flags=win32netcon.UF_SCRIPT | win32netcon.UF_DONT_EXPIRE_PASSWD,
                 script_path="",
             ),
         )
@@ -145,6 +146,10 @@ def main():
                 time.sleep(0.1)
             else:
                 raise RuntimeError("Frozen service failed to enter RUNNING")
+            encrypted = request(
+                dict(operation="export_key", password="CI-secure-recovery-password")
+            )
+            assert encrypted
             token = win32security.LogonUser(
                 account,
                 ".",
@@ -191,10 +196,25 @@ def main():
                     pass
                 else:
                     raise AssertionError("Delete API unexpectedly accepted")
-                encrypted = request(
-                    dict(operation="export_key", password="CI-secure-recovery-password")
-                )
-                assert encrypted
+                try:
+                    request(
+                        dict(
+                            operation="export_key",
+                            password="CI-secure-recovery-password",
+                        )
+                    )
+                except Exception:
+                    pass
+                else:
+                    raise AssertionError(
+                        "Standard user can export signing key through service"
+                    )
+                try:
+                    (keys / "signing-key.pem").read_bytes()
+                except PermissionError:
+                    pass
+                else:
+                    raise AssertionError("Standard user can read signing key")
             finally:
                 win32security.RevertToSelf()
                 token.Close()
