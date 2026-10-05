@@ -98,7 +98,7 @@ foreach ($medium in @($MediumA,$MediumB)) {
     if ($mediaVolume.FileSystem -eq 'NTFS' -and $mediumPath.TrimEnd('\') -ne [IO.Path]::GetPathRoot($mediumPath).TrimEnd('\')) {
         Protect-Folder $mediumPath $true
     } else {
-        Write-Warning "Medium $mediumPath: kein NTFS-Ordnerschutz eingerichtet. Archivunterordner auf NTFS bevorzugen; keine automatische Formatierung."
+        Write-Warning "Medium ${mediumPath}: kein NTFS-Ordnerschutz eingerichtet. Archivunterordner auf NTFS bevorzugen; keine automatische Formatierung."
         if ($mediaVolume.FileSystem -eq 'NTFS') {
             & icacls.exe $mediumPath /grant ("*$($serviceSid):(OI)(CI)M") /T /C | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'Schreibdienst kann das USB-Archiv nicht erreichen' }
