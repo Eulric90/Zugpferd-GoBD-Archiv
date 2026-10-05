@@ -372,7 +372,8 @@ class Register:
                     )
                 if not fields.get("reviewed") or fields.get("critical_errors"):
                     raise ArchiveError(
-                        "Sachliche Freigabe fehlt oder technische Fehler offen"
+                        "Sachliche Freigabe fehlt oder technische Fehler offen: "
+                        + "; ".join(fields["critical_errors"])
                     )
                 sequence = int(match[1])
                 if sequence > state["last"]:

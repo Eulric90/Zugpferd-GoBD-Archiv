@@ -5,6 +5,8 @@ from __future__ import annotations
 import base64
 import json
 import uuid
+import hashlib
+import tempfile
 from pathlib import Path
 
 from cryptography.exceptions import InvalidSignature
@@ -59,6 +61,39 @@ def export_key(key_folder: Path, destination: Path, password: str) -> str:
     return storage.sha256(destination)
 
 
+def restore_key(
+    key_folder: Path, backup: Path, password: str, expected_public_key: str
+) -> str:
+    target = storage.safe_path(key_folder / "signing-key.pem")
+    if target.exists():
+        raise ArchiveError("Vorhandener Signaturschlüssel wird nicht überschrieben")
+    raw = storage.safe_path(backup).read_bytes()
+    if b"BEGIN ENCRYPTED PRIVATE KEY" not in raw:
+        raise ArchiveError("Nur verschlüsselte PKCS8-Schlüsselsicherungen zulässig")
+    key = serialization.load_pem_private_key(raw, password=password.encode())
+    if not isinstance(key, Ed25519PrivateKey):
+        raise ArchiveError("Schlüsselsicherung enthält keinen Ed25519-Schlüssel")
+    public = base64.b64encode(
+        key.public_key().public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw
+        )
+    ).decode()
+    if public != expected_public_key.strip():
+        raise ArchiveError(
+            "Schlüsselsicherung widerspricht unabhängigem Referenzschlüssel"
+        )
+    storage.write_new(
+        target,
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ),
+    )
+    target.chmod(0o600)
+    return public
+
+
 def create_snapshot(root: Path, key_folder: Path) -> Path:
     existing = storage.child(root, FOLDER)
     if (
@@ -86,9 +121,6 @@ def create_snapshot(root: Path, key_folder: Path) -> Path:
             if ".partial-" in source.name:
                 raise ArchiveError("Unvollständige lokale Datei vor Abschluss prüfen")
             digest = storage.sha256(source)
-            storage.verified_copy(
-                source, storage.child(destination, "Dateien/" + relative), digest
-            )
             files.append(dict(path=relative, sha256=digest, size=source.stat().st_size))
     manifest = dict(
         schema_version=1,
@@ -106,11 +138,13 @@ def create_snapshot(root: Path, key_folder: Path) -> Path:
         destination / "manifest.json",
         storage.canonical(manifest | {"signature": signature}),
     )
-    verify_snapshot(destination, manifest["public_key"])
+    resume_snapshot(destination, root)
     return destination
 
 
-def verify_snapshot(snapshot: Path, expected_public_key: str | None = None) -> dict:
+def verify_snapshot(
+    snapshot: Path, expected_public_key: str | None = None, allow_missing: bool = False
+) -> dict:
     try:
         manifest = json.loads(
             storage.safe_path(snapshot / "manifest.json").read_text(encoding="utf-8")
@@ -135,6 +169,8 @@ def verify_snapshot(snapshot: Path, expected_public_key: str | None = None) -> d
                 raise ArchiveError("Doppelter Sicherungspfad")
             seen.add(item["path"].casefold())
             path = storage.child(snapshot, "Dateien/" + item["path"])
+            if allow_missing and not path.exists():
+                continue
             if (
                 path.stat().st_size != item["size"]
                 or storage.sha256(path) != item["sha256"]
@@ -148,8 +184,11 @@ def verify_snapshot(snapshot: Path, expected_public_key: str | None = None) -> d
             for p in snapshot.rglob("*")
             if p.is_file()
         }
-        if actual != expected:
+        partials = {name for name in actual if ".partial-" in Path(name).name}
+        actual -= partials
+        if (not allow_missing and actual != expected) or actual - expected:
             raise ArchiveError("Unbekannte/unvollständige Datei im Sicherungsstand")
+        manifest["warnings"] = sorted(partials)
         return manifest
     except InvalidSignature as exc:
         raise ArchiveError("Abschlusssignatur ungültig") from exc
@@ -157,11 +196,52 @@ def verify_snapshot(snapshot: Path, expected_public_key: str | None = None) -> d
         raise ArchiveError("Sicherungsstand/Signatur nicht lesbar") from exc
 
 
-def replicate_snapshot(snapshot: Path, a: Path, b: Path) -> None:
+def resume_snapshot(snapshot: Path, root: Path) -> None:
+    manifest = verify_snapshot(snapshot, allow_missing=True)
+    for item in manifest["files"]:
+        target = storage.child(snapshot, "Dateien/" + item["path"])
+        if target.exists():
+            continue
+        source = storage.child(root, item["path"])
+        if storage.sha256(source) == item["sha256"]:
+            storage.verified_copy(source, target, item["sha256"])
+        elif item["path"].endswith(".jsonl"):
+            # Logs can have appended failure/retry events since the signed intent.
+            # Copy only the exact signed prefix into a new, private temporary file.
+            with tempfile.TemporaryDirectory(prefix="zugpferd-prefix-") as folder:
+                prefix = Path(folder) / "prefix.jsonl"
+                digest = hashlib.sha256()
+                remaining = item["size"]
+                with source.open("rb") as original, prefix.open("xb") as output:
+                    while remaining:
+                        block = original.read(min(remaining, 1024 * 1024))
+                        if not block:
+                            raise ArchiveError("Journal vor Wiederanlauf gekürzt")
+                        output.write(block)
+                        digest.update(block)
+                        remaining -= len(block)
+                if digest.hexdigest() != item["sha256"]:
+                    raise ArchiveError("Signierter Journal-Präfix widerspricht Quelle")
+                storage.verified_copy(prefix, target, item["sha256"])
+        else:
+            raise ArchiveError("Quelle eines offenen Sicherungsstands verändert")
+    verify_snapshot(snapshot)
+
+
+def replicate_snapshot(snapshot: Path, a: Path, b: Path, validate=None) -> None:
     manifest = verify_snapshot(snapshot)
     for medium in (a, b):
+        if validate:
+            validate()
         target = storage.child(medium, MEDIA_FOLDER + "/" + manifest["id"])
+        storage.verified_copy(
+            snapshot / "manifest.json",
+            target / "manifest.json",
+            storage.sha256(snapshot / "manifest.json"),
+        )
         for item in manifest["files"]:
+            if validate:
+                validate()
             relative = "Dateien/" + item["path"]
             storage.verified_copy(
                 storage.child(snapshot, relative),
@@ -174,6 +254,8 @@ def replicate_snapshot(snapshot: Path, a: Path, b: Path) -> None:
             storage.sha256(snapshot / "manifest.json"),
         )
         verify_snapshot(target, manifest["public_key"])
+        if validate:
+            validate()
 
 
 def audit_snapshots(root: Path, a: Path, b: Path, require_equal: bool = True) -> None:
@@ -191,6 +273,13 @@ def audit_snapshots(root: Path, a: Path, b: Path, require_equal: bool = True) ->
                 serialization.Encoding.Raw, serialization.PublicFormat.Raw
             )
         ).decode()
+    from .journal import Journal
+
+    committed = {
+        e["data"]["snapshot"]
+        for e in Journal(root / "Archivverwaltung/Register/events.jsonl").verify()
+        if e["event"] == "register_backup_verified"
+    }
     sets = []
     for medium in (a, b):
         folder = storage.child(medium, MEDIA_FOLDER)
@@ -199,7 +288,31 @@ def audit_snapshots(root: Path, a: Path, b: Path, require_equal: bool = True) ->
             for snapshot in folder.iterdir():
                 if not snapshot.is_dir():
                     raise ArchiveError("Unerwartete Datei bei Sicherungsständen")
-                manifest = verify_snapshot(snapshot, expected_key)
+                local = storage.child(root, FOLDER + "/" + snapshot.name)
+                if (
+                    not (snapshot / "manifest.json").exists()
+                    and not require_equal
+                    and snapshot.name not in committed
+                ):
+                    intent = verify_snapshot(local, expected_key, allow_missing=True)
+                    expected_files = {
+                        "Dateien/" + i["path"]: i for i in intent["files"]
+                    }
+                    for path in snapshot.rglob("*"):
+                        if path.is_file() and ".partial-" not in path.name:
+                            item = expected_files.get(
+                                path.relative_to(snapshot).as_posix()
+                            )
+                            if not item or storage.sha256(path) != item["sha256"]:
+                                raise ArchiveError(
+                                    "Unbekanntes/widersprüchliches Objekt im offenen Sicherungsstand"
+                                )
+                    continue
+                manifest = verify_snapshot(
+                    snapshot,
+                    expected_key,
+                    allow_missing=not require_equal and snapshot.name not in committed,
+                )
                 ids.add(manifest["id"])
                 local = storage.child(root, FOLDER + "/" + manifest["id"])
                 if not local.is_dir() or storage.sha256(
@@ -210,6 +323,15 @@ def audit_snapshots(root: Path, a: Path, b: Path, require_equal: bool = True) ->
                     )
                 for item in manifest["files"]:
                     if item["path"].endswith(".jsonl"):
+                        previous_path = storage.child(
+                            snapshot, "Dateien/" + item["path"]
+                        )
+                        if (
+                            not previous_path.exists()
+                            and not require_equal
+                            and snapshot.name not in committed
+                        ):
+                            continue
                         previous = storage.child(
                             snapshot, "Dateien/" + item["path"]
                         ).read_bytes()
@@ -222,5 +344,9 @@ def audit_snapshots(root: Path, a: Path, b: Path, require_equal: bool = True) ->
                                 "Journal nach unabhängigem Abschluss verändert/gekürzt"
                             )
         sets.append(ids)
+        if committed - ids:
+            raise ArchiveError(
+                "Bereits abgeschlossener Sicherungsstand fehlt; keine automatische Reparatur"
+            )
     if require_equal and sets[0] != sets[1]:
         raise ArchiveError("A/B-Sicherungsstände unvollständig")

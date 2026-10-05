@@ -476,11 +476,24 @@ class MainWindow(QMainWindow):
                 )
                 storage.write_new(Path(filename + ".public-key.txt"), public + b"\n")
                 return storage.sha256(Path(filename))
-            return export_key(
+            digest = export_key(
                 root.parent / ("." + root.name + "-Schluessel"),
                 Path(filename),
                 password,
             )
+            from cryptography.hazmat.primitives import serialization
+
+            content = Path(filename).read_bytes()
+            key = serialization.load_pem_private_key(
+                content, password=password.encode()
+            )
+            public = base64.b64encode(
+                key.public_key().public_bytes(
+                    serialization.Encoding.Raw, serialization.PublicFormat.Raw
+                )
+            )
+            storage.write_new(Path(filename + ".public-key.txt"), public + b"\n")
+            return digest
 
         self.launch(
             save,

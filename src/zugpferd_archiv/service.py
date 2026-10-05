@@ -145,6 +145,15 @@ class Dispatcher:
                     "Schlüsselsicherung braucht mindestens 12 Zeichen Passwort"
                 )
             folder = self.root.parent / ("." + self.root.name + "-Schluessel")
+            stands = self.root / "Archivverwaltung/Sicherungsstaende"
+            if (
+                stands.exists()
+                and any(stands.iterdir())
+                and not (folder / "signing-key.pem").is_file()
+            ):
+                raise ArchiveError(
+                    "Abschlussschlüssel fehlt; vorhandene Schlüsselsicherung geschützt wiederherstellen"
+                )
             key = signing_key(folder)
             data = key.private_bytes(
                 serialization.Encoding.PEM,

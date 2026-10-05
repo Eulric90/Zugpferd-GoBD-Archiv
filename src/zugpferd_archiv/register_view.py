@@ -341,6 +341,15 @@ class RegisterView(QDialog):
         )
         if not source:
             return
+        reference, _ = QFileDialog.getOpenFileName(
+            self,
+            "Unabhängig verwahrten öffentlichen Referenzschlüssel auswählen",
+            "",
+            "Referenzschlüssel (*.public-key.txt *.txt)",
+        )
+        if not reference:
+            return
+        public_key = Path(reference).read_text(encoding="ascii").strip()
         parent = QFileDialog.getExistingDirectory(
             self, "Übergeordneten Wiederherstellungsordner auswählen"
         )
@@ -349,7 +358,9 @@ class RegisterView(QDialog):
 
             destination = Path(parent) / f"Wiederherstellung-{uuid4()}"
             self.host.launch(
-                lambda progress: restore_snapshot(Path(source), destination),
+                lambda progress: restore_snapshot(
+                    Path(source), destination, public_key
+                ),
                 lambda result: QMessageBox.information(
                     self,
                     "Wiederherstellung geprüft",

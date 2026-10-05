@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 
 from .invoice import MAX_FILE, VERSION
@@ -40,7 +41,9 @@ def analyze_bounded(path: Path) -> dict:
                 import win32con
                 import win32job
 
-                job = win32job.CreateJobObject(None, None)
+                job = win32job.CreateJobObject(
+                    None, "ZugpferdParse-" + uuid.uuid4().hex
+                )
                 limits = win32job.QueryInformationJobObject(
                     job, win32job.JobObjectExtendedLimitInformation
                 )

@@ -459,17 +459,23 @@ class ArchiveService:
                             create_snapshot,
                             replicate_snapshot,
                             FOLDER,
+                            resume_snapshot,
                         )
 
                         snapshot_folder = storage.child(self.root, FOLDER)
                         if snapshot_folder.exists():
                             for previous in snapshot_folder.iterdir():
-                                replicate_snapshot(previous, a, b)
+                                resume_snapshot(previous, self.root)
+                                replicate_snapshot(
+                                    previous, a, b, lambda: self._pair(a, b, report)
+                                )
                         key_folder = self.root.parent / (
                             "." + self.root.name + "-Schluessel"
                         )
                         snapshot = create_snapshot(self.root, key_folder)
-                        replicate_snapshot(snapshot, a, b)
+                        replicate_snapshot(
+                            snapshot, a, b, lambda: self._pair(a, b, report)
+                        )
                         audit_snapshots(self.root, a, b)
                         if not report.exceptions:
                             Register(self.root)._append(

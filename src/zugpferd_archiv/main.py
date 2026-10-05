@@ -17,10 +17,31 @@ def main() -> int:
     parser.add_argument("--migrate-from", type=Path)
     parser.add_argument("--inspect-file", type=Path)
     parser.add_argument("--inspection-output", type=Path)
+    parser.add_argument("--restore-key", type=Path)
+    parser.add_argument("--reference-key", type=Path)
     parser.add_argument(
         "--smoke-test", action="store_true", help="GUI starten und automatisch beenden"
     )
     args = parser.parse_args()
+    if args.restore_key:
+        import ctypes
+
+        if sys.platform != "win32" or not ctypes.windll.shell32.IsUserAnAdmin():
+            parser.error(
+                "Schlüsselwiederherstellung als Windows-Administrator durchführen"
+            )
+        if args.root is None or args.reference_key is None:
+            parser.error("--root und --reference-key erforderlich")
+        import getpass
+        from .snapshots import restore_key
+
+        restore_key(
+            args.root.parent / ("." + args.root.name + "-Schluessel"),
+            args.restore_key,
+            getpass.getpass("Passwort der verschlüsselten Schlüsselsicherung: "),
+            args.reference_key.read_text(encoding="ascii"),
+        )
+        return 0
     if args.inspect_file:
         if args.inspection_output is None:
             parser.error("--inspection-output erforderlich")

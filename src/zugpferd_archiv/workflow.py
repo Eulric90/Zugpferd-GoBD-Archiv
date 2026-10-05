@@ -9,6 +9,7 @@ import json
 import hashlib
 from datetime import date
 from pathlib import Path
+from urllib.parse import quote
 
 from . import storage
 from .errors import ArchiveError
@@ -142,7 +143,7 @@ def export_register(
             f"<td>{html.escape(str(record.get(key, '')))}</td>"
             for key in ("number", "invoice_date", "partner", "gross", "status")
         )
-        + f'<td><a href="{html.escape("Originale/" + record["original_relative"], quote=True)}">Original</a></td></tr>'
+        + f'<td><a href="{html.escape(quote("Originale/" + record["original_relative"]), quote=True)}">Original</a></td></tr>'
         for record in records
     )
     write(

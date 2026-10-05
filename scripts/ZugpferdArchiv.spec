@@ -8,6 +8,8 @@ if saxon_directory.exists():
     binaries += [(str(path), 'saxonche.libs') for path in saxon_directory.rglob('*') if path.is_file()]
 for dependency in Path(get_module_file_attribute('saxonche')).parent.glob('*saxonc*.dll'):
     binaries.append((str(dependency), '.'))
+for dependency in Path(get_module_file_attribute('saxonche')).parent.glob('msvcp140-*.dll'):
+    binaries.append((str(dependency), '.'))
 for module in ('lxml', 'pypdf', 'cryptography'):
     datas += collect_data_files(module)
 datas += [(str(project / 'src/zugpferd_archiv/validation'), 'zugpferd_archiv/validation')]

@@ -25,6 +25,15 @@ def test_published_examples_validate_offline(name):
     assert result["number"] and result["tax_breakdown"]
 
 
+def test_bounded_parser_runs_with_memory_and_time_limits():
+    from zugpferd_archiv.inspection import analyze_bounded
+
+    result = analyze_bounded(
+        (Path(__file__).parent / "fixtures/en16931-cii.xml").resolve()
+    )
+    assert not result["critical_errors"], result
+
+
 def test_mail_multiple_attachments_and_unsafe_names():
     raw = (
         b'MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary="abc"\r\n\r\n'

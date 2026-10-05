@@ -115,9 +115,7 @@ def provision(
                 root / "Archivverwaltung/Konfiguration/Medienpfade.json",
                 storage.canonical(
                     {
-                        role: str(path.relative_to(Path(path.anchor)))
-                        .replace("\\", "/")
-                        .removeprefix(".")
+                        role: medium_subfolder(path)
                         for role, path in (("A", a), ("B", b))
                     }
                 ),
