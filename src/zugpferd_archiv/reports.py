@@ -34,6 +34,7 @@ class Report:
     )
     exceptions: list[dict[str, str]] = field(default_factory=list)
     warnings: list[dict[str, str]] = field(default_factory=list)
+    outputs: list[str] = field(default_factory=list)
     report_json: Path | None = None
     report_text: Path | None = None
 
@@ -58,6 +59,7 @@ class Report:
             + ("ERFOLGREICH" if self.success else "FEHLER / UNVOLLSTÄNDIG"),
             "",
             *(f"{key}: {value}" for key, value in self.totals.items()),
+            *(f"Ausgabe: {path}" for path in self.outputs),
             "",
             *(
                 f"{item['kind']}: {item['path']} – {item['detail']}"

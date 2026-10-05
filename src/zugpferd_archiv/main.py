@@ -22,11 +22,40 @@ def main() -> int:
     window = MainWindow(args.root, use_settings=not args.smoke_test)
     window.show()
     if args.smoke_test:
+        # Also exercise the packaged wizard and its generated preview. No
+        # documentation is saved: the supplied IDs are synthetic test values.
+        from . import __version__
+        from .documentation import FIELD_GROUPS
+        from .documentation_wizard import DocumentationWizard
+
+        ctx = {
+            "software_version": __version__,
+            "root": str(args.root or Path.cwd()),
+            "archive_id": "00000000-0000-0000-0000-000000000001",
+            "media": {
+                role: {
+                    "medium_uuid": role,
+                    "volume_id": "test",
+                    "path_at_creation": "Starttest",
+                }
+                for role in ("A", "B")
+            },
+            "last_backup": None,
+        }
+        wizard = DocumentationWizard(ctx, window)
+        for _, fields in FIELD_GROUPS:
+            for key, label, required in fields:
+                if required:
+                    wizard.editors[key].setPlainText("Starttest: " + label)
+        wizard.setStartId(wizard.pageIds()[-1])
+        wizard.restart()
+        wizard.show()
 
         def finish():
             if window.worker and window.worker.isRunning():
                 QTimer.singleShot(100, finish)
             else:
+                wizard.close()
                 window.close()
                 app.quit()
 

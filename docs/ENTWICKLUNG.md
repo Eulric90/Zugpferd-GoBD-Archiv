@@ -49,3 +49,20 @@ Physischer USB-Abzug, FAT/exFAT, Gerätestromausfall und alle unterstützten
 Windows-Desktop-Versionen müssen zusätzlich im Betrieb mit den vorgesehenen
 Medien erprobt werden. Der automatisierte Buildtest ersetzt diese Hardwareprüfung
 nicht. Die Windows-Veröffentlichung erfolgt ohne Codesignatur.
+
+## Dokumentationsassistent
+
+`documentation.py` validiert betriebliche Eingaben, ergänzt technische
+Momentaufnahmen, rendert Markdown/HTML/JSON und speichert Fassungen ohne
+Überschreiben. `documentation_wizard.py` bietet Pflichtfelder, Vorschau,
+Gültigkeitsdatum und den optionalen Status einer betrieblichen Freigabe.
+HTML-Eingaben werden als Text maskiert. Dokumentationsdateien gehören nicht ins
+Rechnungsmanifest; ihre Pfade und SHA-256 werden separat im bestehenden
+hash-verketteten Medienjournal festgehalten.
+
+Eine lokale Abschlussdatei markiert vollständige A/B-Speicherung. Eine ausstehende
+Fassung lässt sich mit unveränderten Angaben weiterführen; vorher verzeichnete
+Objekte werden geprüft und nicht still repariert. Vollprüfung/A/B-Vergleich und
+Sicherungen prüfen zusätzlich die Dokumentationshistorie. Tests decken auch
+Assistent-Abbruch, GUI-Speicherung, Vorbelegung, Pflichtfelder/Freigabe,
+Versionierung, Unterbrechung, Wiederaufnahme und Manipulation ab.

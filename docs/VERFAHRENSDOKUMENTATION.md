@@ -42,3 +42,13 @@ Originalzeitstempel in Metadaten sind maßgeblich.
 
 Aufgetretene Fehler, manuelle Eingriffe sowie Ergebnisse von Sicherung, Prüfung
 und Export sind betrieblich zu dokumentieren. V1 enthält keine Archivlöschfunktion.
+
+## Ausgefüllte Fassung über den Assistenten erzeugen
+
+Die Anwendung bietet unter `Verfahrensdokumentation erstellen` einen Assistenten
+für die Angaben dieser Vorlage. Technische Archivinformationen ergänzt sie
+automatisch. Die Eingaben können zunächst als Entwurf gespeichert und nach
+betrieblicher Prüfung in einer neuen Fassung freigegeben werden. Der Assistent
+speichert jede Fassung mit eindeutiger Dokument-ID lokal und auf beiden
+zugeordneten Medien, inklusive SHA-256-Prüfsummen und Journalnachweis.
+Details und Wiederanlauf stehen im [Benutzerhandbuch](BENUTZERHANDBUCH.md).

@@ -55,3 +55,12 @@ Veränderte Quellen werden sicher abgelehnt; bestehende Archivhistorie wird erha
 Für den Start aus dem Quellcode: Python 3.12+, `python -m pip install -e .`,
 anschließend `python -m zugpferd_archiv`. Der Windows-Build verwendet
 `scripts/build_windows.ps1`; er prüft die Tests und startet auch die gebaute EXE.
+
+## Verfahrensdokumentation erstellen
+
+Der integrierte Assistent fragt Unternehmensdaten und betriebliche Abläufe ab,
+ergänzt Archivkennungen und technische Angaben automatisch und zeigt eine Vorschau.
+Er speichert versionierte Fassungen als druckbare HTML-Datei, Markdown und JSON
+lokal sowie verifiziert auf A/B. Frühere Fassungen bleiben erhalten. Entwürfe und
+betriebliche Freigaben werden ausdrücklich unterschieden; die Angaben müssen
+vom Betreiber geprüft und in der Praxis umgesetzt werden.

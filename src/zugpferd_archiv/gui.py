@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDateEdit,
+    QDialog,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
@@ -151,6 +152,12 @@ class MainWindow(QMainWindow):
         self.export_button = self._button(row, "Prüfexport erstellen", self.export)
         self._button(row, "Letzten Bericht öffnen", self.open_report)
         layout.addLayout(row)
+        row = QHBoxLayout()
+        self.documentation_button = self._button(
+            row, "Verfahrensdokumentation erstellen", self.documentation
+        )
+        self._button(row, "Gespeicherte Dokumentation öffnen", self.open_documentation)
+        layout.addLayout(row)
         self.status = QLabel(
             "Bereit. Medien vor dem Abziehen nach Ende des Laufs sicher auswerfen."
         )
@@ -191,10 +198,12 @@ class MainWindow(QMainWindow):
         self.worker.progress.connect(self.log.append)
         self.worker.result.connect(on_result or self.completed)
         self.worker.error.connect(self.failed)
-        self.worker.finished.connect(self.idle)
+        self.worker.finished.connect(lambda worker=self.worker: self.idle(worker))
         self.worker.start()
 
-    def idle(self) -> None:
+    def idle(self, worker: Worker | None = None) -> None:
+        if worker is not None and worker is not self.worker:
+            return
         for control in self.controls:
             control.setEnabled(True)
         self.update_media_status()
@@ -216,6 +225,8 @@ class MainWindow(QMainWindow):
                 else "FEHLER / UNVOLLSTÄNDIG – Bericht prüfen"
             )
             self.log.append(value.text())
+            for output in value.outputs:
+                self.log.append(f"Dokumentation: {output}")
             if value.report_text:
                 self._reports.append(value.report_text)
             if value.operation == "backup":
@@ -227,7 +238,12 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(
                     self,
                     "Vorgang abgeschlossen",
-                    f"{value.operation}: erfolgreich. Bericht: {value.report_text}",
+                    (
+                        "Dokumentationsfassung lokal sowie auf A/B gespeichert und verifiziert.\n"
+                        + next((p for p in value.outputs if p.endswith(".html")), "")
+                        if value.operation == "documentation"
+                        else f"{value.operation}: erfolgreich. Bericht: {value.report_text}"
+                    ),
                 )
             else:
                 QMessageBox.warning(
@@ -438,6 +454,81 @@ class MainWindow(QMainWindow):
             from PySide6.QtGui import QDesktopServices
 
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._reports[-1])))
+
+    def documentation(self) -> None:
+        try:
+            root, a, b = self.root(), self.medium("A"), self.medium("B")
+
+            def prepare(progress):
+                from .documentation import context, load_latest
+
+                service = ArchiveService(root, progress)
+                service.setup()
+                service._pair(a, b, Report("documentation_prepare"))
+                return context(service, a, b), load_latest(root, include_pending=True)
+
+            def show(value):
+                from .documentation import DocumentationData, answers_from
+                from .documentation_wizard import DocumentationWizard
+
+                ctx, latest = value
+                pending = bool(latest and not latest["completed"])
+                initial = answers_from(latest) if latest else None
+                if initial and not pending:
+                    initial = DocumentationData(initial.values, approved=False)
+                wizard = DocumentationWizard(
+                    ctx,
+                    self,
+                    initial=initial,
+                    pending=pending,
+                    version=latest["version"] + (0 if pending else 1) if latest else 1,
+                    preview_record=latest,
+                )
+                if wizard.exec() == QDialog.DialogCode.Accepted:
+                    data = wizard.documentation_data()
+                    self.launch(
+                        lambda progress: ArchiveService(
+                            root, progress
+                        ).create_documentation(a, b, data)
+                    )
+                else:
+                    self.status.setText(
+                        "Dokumentationsassistent abgebrochen; keine Fassung gespeichert."
+                    )
+
+            self.launch(prepare, show)
+        except ArchiveError as exc:
+            self.failed(str(exc))
+
+    def open_documentation(self) -> None:
+        try:
+            root = self.root()
+
+            def operation(progress):
+                from .documentation import LOCAL_BASE, load_latest
+
+                latest = load_latest(root)
+                if not latest:
+                    raise ArchiveError(
+                        "Noch keine vollständig gespeicherte Dokumentationsfassung vorhanden"
+                    )
+                return (
+                    root
+                    / LOCAL_BASE
+                    / latest["document_id"]
+                    / "Verfahrensdokumentation.html"
+                )
+
+            def opened(path):
+                from PySide6.QtCore import QUrl
+                from PySide6.QtGui import QDesktopServices
+
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+                self.status.setText(f"Dokumentation geöffnet: {path}")
+
+            self.launch(operation, opened)
+        except ArchiveError as exc:
+            self.failed(str(exc))
 
     def closeEvent(self, event) -> None:
         if self.worker and self.worker.isRunning():
