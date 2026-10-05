@@ -108,3 +108,59 @@ def test_status_cannot_fake_sent_without_attachment(tmp_path):
         register.correct(
             record["id"], {"status": "versandt"}, "Versand einfach abhaken"
         )
+
+
+def test_supplier_may_restart_numbers_in_another_year(tmp_path):
+    source = tmp_path / "invoice.pdf"
+    source.write_bytes(b"first year")
+    register = Register(tmp_path / "archive", actor="SID")
+    register.ingest(source, fields())
+    source.write_bytes(b"second year")
+    register.ingest(source, fields() | {"invoice_date": "2027-01-02"})
+    assert len(register.records()) == 2
+
+
+def test_manual_amount_correction_is_validated_and_keeps_previous_values(tmp_path):
+    source = tmp_path / "invoice.pdf"
+    source.write_bytes(b"original")
+    register = Register(tmp_path / "archive", actor="SID")
+    record = register.ingest(source, fields())
+    with pytest.raises(ArchiveError, match="Summen"):
+        register.correct(record["id"], {"gross": "238"}, "Ablesefehler")
+    register.correct(
+        record["id"], {"net": "200", "tax": "38", "gross": "238"}, "Ablesefehler"
+    )
+    assert register.records()[0]["gross"] == "238"
+    assert register.events()[-1]["data"]["before"]["gross"] == "119.00"
+
+
+def test_leading_xml_cannot_be_changed_by_metadata_correction(tmp_path):
+    from zugpferd_archiv.inspection import analyze_bounded
+    from pathlib import Path
+
+    source = Path(__file__).parent / "fixtures/en16931-cii.xml"
+    parsed = analyze_bounded(source)
+    register = Register(tmp_path / "archive", actor="SID")
+    record = register.ingest(
+        source,
+        fields()
+        | {
+            k: parsed[k]
+            for k in ("number", "invoice_date", "currency", "net", "tax", "gross")
+        },
+    )
+    with pytest.raises(ArchiveError, match="führender XML"):
+        register.correct(record["id"], {"number": "wrong"}, "Tippfehler")
+
+
+def test_number_correction_reserves_new_number_and_never_reuses_old(tmp_path):
+    source = tmp_path / "invoice.pdf"
+    source.write_bytes(b"original")
+    register = Register(tmp_path / "archive", actor="SID")
+    register.start_series(2026, "", 0, "Baseline")
+    record = register.ingest(source, fields("Ausgang", "20260001"))
+    register.correct(record["id"], {"number": "20260005"}, "Ablesefehler")
+    assert register.reserve(2026) == "20260006"
+    source.write_bytes(b"another invoice")
+    with pytest.raises(ArchiveError, match="erneut"):
+        register.ingest(source, fields("Ausgang", "20260001") | {"historical": True})

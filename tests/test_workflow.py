@@ -45,3 +45,26 @@ def test_restore_refuses_existing_destination(tmp_path):
     destination.mkdir()
     with pytest.raises(ArchiveError):
         restore_snapshot(tmp_path / "missing", destination)
+
+
+def test_export_includes_readable_leading_xml(tmp_path):
+    from pathlib import Path
+    from zugpferd_archiv.inspection import analyze_bounded
+    from zugpferd_archiv import storage
+
+    source = Path(__file__).parent / "fixtures/en16931-cii.xml"
+    parsed = analyze_bounded(source)
+    register = Register(tmp_path / "root", actor="SID")
+    record = register.ingest(
+        source,
+        dict(direction="Eingang", partner="Lieferant", source="Portal", reviewed=True)
+        | {
+            k: parsed[k]
+            for k in ("number", "invoice_date", "currency", "net", "tax", "gross")
+        },
+    )
+    export_register(register, tmp_path / "export", "0001-01-01", "9999-12-31")
+    view = tmp_path / "export/Lesbare-XML" / (record["id"] + ".html")
+    assert view.is_file() and "XML" in view.read_text()
+    assert "XML-Ansicht" in (tmp_path / "export/index.html").read_text()
+    assert storage.sha256(source) == record["sha256"]

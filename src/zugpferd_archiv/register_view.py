@@ -200,23 +200,45 @@ class RegisterView(QDialog):
                 "hold",
                 "related_id",
                 "status",
+                "Beträge (Netto; Steuer; Brutto)",
+                "currency",
             ],
             0,
             False,
         )
         if not accepted:
             return
+        amounts = key == "Beträge (Netto; Steuer; Brutto)"
         value, accepted = QInputDialog.getText(
-            self, "Neuer Wert", key, text=str(record.get(key, ""))
+            self,
+            "Neuer Wert",
+            key,
+            text=(
+                "; ".join(record[k] for k in ("net", "tax", "gross"))
+                if amounts
+                else str(record.get(key, ""))
+            ),
         )
         if not accepted:
             return
+        if amounts:
+            values = [part.strip() for part in value.split(";")]
+            if len(values) != 3:
+                QMessageBox.warning(
+                    self,
+                    "Beträge",
+                    "Drei Dezimalwerte mit Punkt und Semikolon eingeben: 100.00; 19.00; 119.00",
+                )
+                return
+            changes = dict(zip(("net", "tax", "gross"), values))
+        else:
+            changes = {key: value}
         reason, accepted = QInputDialog.getText(
             self, "Begründung", "Korrektur bleibt mit bisherigem Wert erhalten"
         )
         if accepted:
             self.mutation(
-                lambda: Register(self.root).correct(record["id"], {key: value}, reason),
+                lambda: Register(self.root).correct(record["id"], changes, reason),
                 "Änderung angehängt; Original unverändert",
             )
 

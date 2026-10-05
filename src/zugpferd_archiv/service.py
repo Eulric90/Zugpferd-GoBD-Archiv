@@ -220,6 +220,7 @@ def request(payload: dict):
     handle = win32file.CreateFile(PIPE, 0xC0000000, 0, None, 3, 0, None)
     try:
         import ctypes
+        from ctypes import wintypes
         import win32service
 
         manager = win32service.OpenSCManager(
@@ -231,10 +232,11 @@ def request(payload: dict):
         try:
             status = win32service.QueryServiceStatusEx(service)
             server_pid = ctypes.c_ulong()
+            get_server_pid = ctypes.windll.kernel32.GetNamedPipeServerProcessId
+            get_server_pid.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+            get_server_pid.restype = wintypes.BOOL
             if (
-                not ctypes.windll.kernel32.GetNamedPipeServerProcessId(
-                    int(handle), ctypes.byref(server_pid)
-                )
+                not get_server_pid(int(handle), ctypes.byref(server_pid))
                 or server_pid.value != status["ProcessId"]
             ):
                 raise ArchiveError(

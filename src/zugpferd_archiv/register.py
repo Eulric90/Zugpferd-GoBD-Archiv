@@ -16,19 +16,18 @@ from . import storage
 
 def actor_identity() -> str:
     if os.name == "nt":
-        import subprocess
+        import win32api
+        import win32security
 
-        import csv
-
-        result = subprocess.run(
-            ["whoami", "/user", "/fo", "csv", "/nh"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=10,
-            creationflags=0x08000000,
+        token = win32security.OpenProcessToken(
+            win32api.GetCurrentProcess(), win32security.TOKEN_QUERY
         )
-        return next(csv.reader([result.stdout.strip()]))[1]
+        try:
+            return win32security.ConvertSidToStringSid(
+                win32security.GetTokenInformation(token, win32security.TokenUser)[0]
+            )
+        finally:
+            token.Close()
     return f"local-uid:{os.getuid()}"
 
 
@@ -371,13 +370,16 @@ class Register:
                     and record["number"] == fields["number"]
                     and (
                         fields["direction"] == "Ausgang"
-                        or record["partner"].casefold() == fields["partner"].casefold()
+                        or (
+                            record["partner"].casefold() == fields["partner"].casefold()
+                            and record["invoice_date"][:4] == fields["invoice_date"][:4]
+                        )
                     )
                 ):
                     raise ArchiveError(
                         "Rechnungsnummer bereits mit anderem Original vorhanden"
                     )
-            if fields["direction"] == "Ausgang" and not fields.get("historical"):
+            if fields["direction"] == "Ausgang":
                 assigned = {
                     e["data"]["record"]["number"]
                     for e in self.events()
@@ -388,6 +390,7 @@ class Register:
                     raise ArchiveError(
                         "Historisch vergebene Ausgangsnummer darf nicht erneut verwendet werden"
                     )
+            if fields["direction"] == "Ausgang" and not fields.get("historical"):
                 state = self.series(invoice_date.year)
                 match = re.fullmatch(
                     f"{invoice_date.year:04}{re.escape(state['separator'])}(\\d{{4}})",
@@ -486,6 +489,10 @@ class Register:
             "related_id",
             "sent_at",
             "recipient",
+            "net",
+            "tax",
+            "gross",
+            "currency",
         }
         if not reason.strip() or not changes or set(changes) - allowed:
             raise ArchiveError("Korrektur braucht zulässige Felder und Begründung")
@@ -496,6 +503,30 @@ class Register:
                 raise ArchiveError("Unbekannte Beleg-ID")
             if "invoice_date" in changes:
                 date.fromisoformat(changes["invoice_date"])
+            updated = record | changes
+            for key in ("number", "partner", "currency"):
+                if not isinstance(updated[key], str) or not updated[key].strip():
+                    raise ArchiveError("Leere oder ungültige Pflichtangabe")
+            if not re.fullmatch(r"[A-Z]{3}", updated["currency"]):
+                raise ArchiveError("Währung muss dreistellig sein")
+            if amount(updated["net"]) + amount(updated["tax"]) != amount(
+                updated["gross"]
+            ):
+                raise ArchiveError("Summen: Netto plus Steuer entspricht nicht Brutto")
+            leading = record.get("xml_fields", {})
+            for key in ("number", "invoice_date", "currency", "net", "tax", "gross"):
+                if key in changes and leading.get(key):
+                    equal = (
+                        (amount(changes[key]) == amount(leading[key]))
+                        if key in ("net", "tax", "gross")
+                        else changes[key] == leading[key]
+                    )
+                    if not equal:
+                        raise ArchiveError(
+                            "Korrektur widerspricht führender XML; Berichtigung als neuen Beleg archivieren"
+                        )
+            if changes.get("status") == "freigegeben" and record.get("critical_errors"):
+                raise ArchiveError("Technische Fehler offen; keine Freigabe")
             if "status" in changes and changes["status"] not in (
                 "offen",
                 "geprüft",
@@ -515,17 +546,55 @@ class Register:
                 and not any(r["id"] == changes["related_id"] for r in records)
             ):
                 raise ArchiveError("Beziehung braucht vorhandene Beleg-ID")
-            if {"number", "partner"} & changes.keys() and any(
+            if {"number", "partner", "invoice_date"} & changes.keys() and any(
                 r["id"] != identity
                 and r["direction"] == record["direction"]
                 and r["number"] == changes.get("number", record["number"])
                 and (
                     record["direction"] == "Ausgang"
-                    or r["partner"] == changes.get("partner", record["partner"])
+                    or (
+                        r["partner"].casefold() == updated["partner"].casefold()
+                        and r["invoice_date"][:4] == updated["invoice_date"][:4]
+                    )
                 )
                 for r in records
             ):
                 raise ArchiveError("Korrektur erzeugt doppelte Rechnungsnummer")
+            if (
+                record["direction"] == "Ausgang"
+                and "number" in changes
+                and changes["number"] != record["number"]
+            ):
+                if any(
+                    e["event"] == "invoice_imported"
+                    and e["data"]["record"]["direction"] == "Ausgang"
+                    and e["data"]["record"]["number"] == changes["number"]
+                    for e in self.events()
+                ):
+                    raise ArchiveError(
+                        "Bereits vergebene Ausgangsnummer darf nicht erneut verwendet werden"
+                    )
+                if not record.get("historical"):
+                    year = date.fromisoformat(updated["invoice_date"]).year
+                    state = self.series(year)
+                    match = re.fullmatch(
+                        f"{year:04}{re.escape(state['separator'])}(\\d{{4}})",
+                        updated["number"],
+                    )
+                    if not match or not 1 <= int(match[1]) <= 9999:
+                        raise ArchiveError(
+                            "Ausgangsnummer widerspricht bestätigter Jahresserie"
+                        )
+                    if int(match[1]) > state["last"]:
+                        self._append(
+                            "number_reserved",
+                            dict(
+                                year=year,
+                                sequence=int(match[1]),
+                                number=updated["number"],
+                                reason="Begründete Metadatenkorrektur: " + reason,
+                            ),
+                        )
             self._append(
                 event,
                 dict(
@@ -543,6 +612,13 @@ class Register:
         date.fromisoformat(sent_date)
         if record["direction"] != "Ausgang" or not recipient.strip():
             raise ArchiveError("Versand braucht Ausgangsrechnung und Empfänger")
+        if not record.get("historical") and (
+            record["status"] not in ("freigegeben", "versandt")
+            or record.get("critical_errors")
+        ):
+            raise ArchiveError(
+                "Versand braucht freigegebene Ausgangsrechnung ohne offene technische Fehler"
+            )
         if attachment.suffix.casefold() == ".eml":
             from .invoice import mail_attachments, MAX_FILE
 

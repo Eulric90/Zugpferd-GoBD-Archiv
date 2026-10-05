@@ -97,6 +97,23 @@ def export_register(
             digest = storage.sha256(source)
             storage.verified_copy(source, storage.child(destination, name), digest)
             checksums[name] = digest
+        if record.get("xml_fields", {}).get("format") in ("CII", "UBL", "ZUGFeRD"):
+            from .inspection import analyze_bounded
+            from .xml_view import render_xml
+
+            inspection = analyze_bounded(
+                storage.child(register.root, record["original_relative"])
+            )
+            if inspection.get("xml"):
+                write(
+                    "Lesbare-XML/" + record["id"] + ".html",
+                    (
+                        "<!doctype html><meta charset=utf-8><title>Lesbare XML-Rechnung</title>"
+                        "<style>td{border:1px solid #aaa;padding:6px}table{border-collapse:collapse}</style>"
+                        "<p>Ansicht der archivierten XML. Das unveränderte Original bleibt maßgeblich.</p>"
+                        + render_xml(inspection["xml"])
+                    ).encode("utf-8"),
+                )
     write(
         "register.json",
         storage.canonical(
@@ -143,7 +160,13 @@ def export_register(
             f"<td>{html.escape(str(record.get(key, '')))}</td>"
             for key in ("number", "invoice_date", "partner", "gross", "status")
         )
-        + f'<td><a href="{html.escape(quote("Originale/" + record["original_relative"]), quote=True)}">Original</a></td></tr>'
+        + f'<td><a href="{html.escape(quote("Originale/" + record["original_relative"]), quote=True)}">Original</a>'
+        + (
+            f' · <a href="Lesbare-XML/{record["id"]}.html">XML-Ansicht</a>'
+            if "Lesbare-XML/" + record["id"] + ".html" in checksums
+            else ""
+        )
+        + "</td></tr>"
         for record in records
     )
     write(
