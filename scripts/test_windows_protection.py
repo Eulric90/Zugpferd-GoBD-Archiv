@@ -106,7 +106,9 @@ def main():
             "/T",
             "/C",
         )
-        with tempfile.TemporaryDirectory(prefix="zugpferd-protection-") as directory:
+        with tempfile.TemporaryDirectory(
+            prefix="zugpferd-protection-", dir=os.environ["ProgramData"]
+        ) as directory:
             base = Path(directory)
             root, staging, keys = (
                 base / "Archive",

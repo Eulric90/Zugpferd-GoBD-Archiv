@@ -30,7 +30,10 @@ Lokal `Archivverwaltung/Sicherungsstaende/<UUID>`, auf A/B `Sicherungsstaende/<U
 `manifest.json` enthält Dateiliste, Größen, Hashes, Zeitpunkt, öffentlichen Ed25519-
 Schlüssel und Signatur über canonical JSON. `Dateien/` enthält den vollständigen
 Stand einschließlich Register, Originalen, Konfiguration und Nachweisen. Private
-Schlüssel und eigene rekursive Sicherungsstände werden nicht mitkopiert.
+Schlüssel und eigene rekursive Datenkopien der Sicherungsstände werden nicht mitkopiert.
+Die signierten Manifestreferenzen früherer Stände sind enthalten; die Wiederherstellung
+legt zusätzlich die ausgewählte Manifestreferenz ab. Damit bleibt die unabhängige
+Prüfhistorie bei späterer Fortsetzung vorhanden.
 
 Eine signierte Absicht wird vor dem Kopieren veröffentlicht; erst vollständige
 Rückleseprüfung beider Medien führt zum Abschluss. Offene Absichten sind fortsetzbar.

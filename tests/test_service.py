@@ -48,3 +48,15 @@ def test_service_rejects_unknown_arguments_and_payload_size(tmp_path):
         )
     with pytest.raises(ArchiveError):
         dispatch.call({"operation": "records", "args": ["arbitrary"]}, "SID")
+
+
+def test_operator_cannot_supply_internal_sent_event_argument(tmp_path):
+    dispatch = Dispatcher(tmp_path / "archive", tmp_path / "staging")
+    with pytest.raises(ArchiveError):
+        dispatch.call(
+            {
+                "operation": "correct",
+                "args": ["id", {"status": "versandt"}, "fake", "sent"],
+            },
+            "SID",
+        )

@@ -229,6 +229,15 @@ def restore_snapshot(
             storage.child(destination, item["path"]),
             item["sha256"],
         )
+    # Retain signed references for prior checkpoints and this checkpoint itself.
+    # Their data copies can be reconstructed from verified current originals/log prefixes.
+    from .snapshots import FOLDER
+
+    storage.verified_copy(
+        snapshot / "manifest.json",
+        storage.child(destination, FOLDER + "/" + manifest["id"] + "/manifest.json"),
+        storage.sha256(snapshot / "manifest.json"),
+    )
     # Read-only inspection first; never bind restored copies to a live service automatically.
     storage.write_new(
         destination / "WIEDERHERSTELLUNG.json",

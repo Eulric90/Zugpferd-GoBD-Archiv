@@ -111,10 +111,14 @@ def create_snapshot(root: Path, key_folder: Path) -> Path:
     sources = list(root.rglob("*"))
     for source in sources:
         relative = source.relative_to(root).as_posix()
-        if (
+        checkpoint_reference = (
             relative.startswith(FOLDER + "/")
-            or source.name == ".zugpferd-operation.lock"
-        ):
+            and len(Path(relative).parts) == len(Path(FOLDER).parts) + 2
+            and source.name == "manifest.json"
+        )
+        if (
+            relative.startswith(FOLDER + "/") and not checkpoint_reference
+        ) or source.name == ".zugpferd-operation.lock":
             continue
         storage.safe_path(source)
         if source.is_file():
@@ -283,6 +287,11 @@ def audit_snapshots(
         for e in Journal(root / "Archivverwaltung/Register/events.jsonl").verify()
         if e["event"] == "register_backup_verified"
     }
+    recovery = root / "WIEDERHERSTELLUNG.json"
+    if recovery.is_file():
+        # Recovery does not authorize repairing a checkpoint that was selected
+        # as a verified reference. Both media must retain it before live adoption.
+        committed.add(json.loads(recovery.read_text(encoding="utf-8"))["snapshot"])
     sets = []
     for medium in (a, b):
         folder = storage.child(medium, MEDIA_FOLDER)

@@ -7,7 +7,9 @@ from PySide6.QtWidgets import QDialog, QTabWidget, QTextBrowser, QVBoxLayout
 
 
 class DocumentView(QDialog):
-    def __init__(self, path: Path, record: dict, parent=None):
+    def __init__(
+        self, path: Path, record: dict, parent=None, *, xml: bytes | None = None
+    ):
         super().__init__(parent)
         self.setWindowTitle("Original und strukturierte Rechnungsdaten")
         self.resize(950, 750)
@@ -34,6 +36,15 @@ class DocumentView(QDialog):
             + "<p>XML ist bei E-Rechnungen führend. Registerkorrekturen verändern das Original nicht.</p>"
         )
         tabs.addTab(browser, "Lesbare Daten")
+        if xml:
+            raw_view = QTextBrowser()
+            from .xml_view import render_xml
+
+            try:
+                raw_view.setHtml(render_xml(xml))
+            except Exception:
+                raw_view.setPlainText(xml.decode("utf-8", errors="replace"))
+            tabs.addTab(raw_view, "Führende XML (unverändert)")
         root = path.parents[len(Path(record["original_relative"]).parts) - 1]
         for item in record.get("related_files", []):
             if "XML" in item["kind"]:

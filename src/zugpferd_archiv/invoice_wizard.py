@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWizardPage,
     QScrollArea,
     QWidget,
+    QPushButton,
 )
 
 
@@ -42,6 +43,9 @@ class InvoiceWizard(QWizard):
                 f"Original: {source.name}\nFormat: {extracted.get('format', '')}\nProfil: {extracted.get('profile', '')}"
             )
         )
+        self.preview_button = QPushButton("Original und führende XML ansehen")
+        self.preview_button.clicked.connect(self.show_original)
+        layout.addWidget(self.preview_button)
         self.errors = QTextBrowser()
         self.errors.setPlainText(
             "\n".join(extracted.get("critical_errors", []))
@@ -119,6 +123,13 @@ class InvoiceWizard(QWizard):
             )
         )
         self.addPage(summary)
+
+    def show_original(self) -> None:
+        from .document_view import DocumentView
+
+        record = {key: value for key, value in self.extracted.items() if key != "xml"}
+        record["original_relative"] = self.source.name
+        DocumentView(self.source, record, self, xml=self.extracted.get("xml")).exec()
 
     def data(self) -> dict:
         return {key: field.text().strip() for key, field in self.fields.items()} | dict(

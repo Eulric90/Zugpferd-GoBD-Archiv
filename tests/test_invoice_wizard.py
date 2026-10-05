@@ -27,3 +27,21 @@ def test_outgoing_review_and_critical_errors_block_progress():
     wizard.historical.setChecked(True)
     assert wizard.validateCurrentPage()
     wizard.close()
+
+
+def test_wizard_exposes_original_and_complete_xml_preview(monkeypatch):
+    from zugpferd_archiv.document_view import DocumentView
+
+    app = QApplication.instance() or QApplication([])
+    raw = b"<Invoice><ID>20260001</ID></Invoice>"
+    captured = []
+    monkeypatch.setattr(
+        DocumentView, "exec", lambda self: captured.append(self.windowTitle())
+    )
+    wizard = InvoiceWizard(
+        Path("invoice.pdf"), "Eingang", {"xml": raw, "format": "CII"}
+    )
+    wizard.preview_button.click()
+    assert captured == ["Original und strukturierte Rechnungsdaten"]
+    wizard.close()
+    app.processEvents()

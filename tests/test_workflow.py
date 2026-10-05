@@ -68,3 +68,76 @@ def test_export_includes_readable_leading_xml(tmp_path):
     assert view.is_file() and "XML" in view.read_text()
     assert "XML-Ansicht" in (tmp_path / "export/index.html").read_text()
     assert storage.sha256(source) == record["sha256"]
+
+
+def test_latest_recovery_can_continue_backups_with_restored_key(tmp_path):
+    from zugpferd_archiv.core import ArchiveService
+    from zugpferd_archiv.media import register
+    from zugpferd_archiv.snapshots import FOLDER, export_key, restore_key
+    import json
+
+    root, a, b = (tmp_path / name for name in ("root", "A", "B"))
+    for folder in (root, a, b):
+        folder.mkdir()
+    archive = ArchiveService(root)
+    archive.setup()
+    marker = register(a, "A")
+    register(b, "B", marker.archive_id)
+    archive.configure(a, b)
+    Register(root, actor="SID").start_series(2026, "", 0, "Baseline")
+    assert archive.backup(a, b).success
+    assert archive.backup(a, b).success
+    events = Register(root, actor="SID").events()
+    identity = [
+        e["data"]["snapshot"]
+        for e in events
+        if e["event"] == "register_backup_verified"
+    ][-1]
+    snapshot = root / FOLDER / identity
+    public = json.loads((snapshot / "manifest.json").read_text())["public_key"]
+    recovered = tmp_path / "recovered"
+    restore_snapshot(snapshot, recovered, public)
+    encrypted = tmp_path / "encrypted.pem"
+    export_key(
+        tmp_path / ".root-Schluessel", encrypted, "separate-password-for-recovery"
+    )
+    restore_key(
+        tmp_path / ".recovered-Schluessel",
+        encrypted,
+        "separate-password-for-recovery",
+        public,
+    )
+    assert ArchiveService(recovered).backup(a, b).success
+
+
+def test_recovery_does_not_repair_missing_reference_object_on_other_medium(tmp_path):
+    import json
+    from zugpferd_archiv.snapshots import (
+        create_snapshot,
+        replicate_snapshot,
+        audit_snapshots,
+        export_key,
+        restore_key,
+        MEDIA_FOLDER,
+    )
+
+    root, a, b = (tmp_path / name for name in ("root", "A", "B"))
+    for folder in (root, a, b):
+        folder.mkdir()
+    (root / "original.pdf").write_bytes(b"original")
+    snapshot = create_snapshot(root, tmp_path / ".root-Schluessel")
+    replicate_snapshot(snapshot, a, b)
+    public = json.loads((snapshot / "manifest.json").read_text())["public_key"]
+    recovered = tmp_path / "recovered"
+    restore_snapshot(snapshot, recovered, public)
+    encrypted = tmp_path / "encrypted.pem"
+    export_key(tmp_path / ".root-Schluessel", encrypted, "separate-recovery-password")
+    restore_key(
+        tmp_path / ".recovered-Schluessel",
+        encrypted,
+        "separate-recovery-password",
+        public,
+    )
+    (b / MEDIA_FOLDER / snapshot.name / "Dateien/original.pdf").unlink()
+    with pytest.raises(ArchiveError):
+        audit_snapshots(recovered, a, b, require_equal=False)

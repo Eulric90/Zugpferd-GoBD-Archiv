@@ -86,7 +86,10 @@ Im Register `Wiederherstellung in neuen Ordner` wählen. Den UUID-Ordner unter
 Referenzschlüssel angeben und einen neuen Zielordner erstellen lassen.
 Alle im signierten Stand enthaltenen Originale, Register, Beziehungen, Konfiguration,
 Nachweise und Dokumentationen werden geprüft kopiert. Vorhandene Ordner bleiben unberührt.
-Zuerst als Prüfkopie verwenden; vor Livebetrieb Admin-Installation/NTFS-Rechte neu einrichten.
+Zuerst als Prüfkopie verwenden. Für die Fortsetzung den jüngsten vollständigen Stand wählen,
+passenden Schlüssel wiederherstellen und beide Medien prüfen. Frühere Manifestreferenzen
+bleiben erhalten; fehlende Referenzobjekte auf A/B werden nicht still repariert.
+Vor Livebetrieb Admin-Installation/NTFS-Rechte neu einrichten.
 
 Ein privater Signaturschlüssel gehört nicht in den allgemeinen Sicherungsstand.
 Falls der geschützte Schlüssel fehlt, Dienst stoppen und als Administrator ausführen:
