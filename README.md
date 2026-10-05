@@ -34,3 +34,4 @@ Windows-Anwendung zur GoBD-unterstützenden Archivierung elektronischer Ein- und
 7. **Trennung:** Arbeitsablage auf C: und Archivmedien sind getrennte Rollen.
 
 Siehe `docs/SPECIFICATION.md` und `AGENTS.md` für die verbindlichen Anforderungen.
+

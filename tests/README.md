@@ -16,3 +16,4 @@ Tests must cover at least:
 - interrupted temporary-copy recovery behavior
 
 Use temporary directories and mocks; tests must not require real USB media.
+

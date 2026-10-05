@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "zugpferd-gobd-archiv"
-version = "0.1.0"
+version = "1.0.0"
 description = "GoBD-supporting redundant invoice archive for Windows"
 requires-python = ">=3.12"
-dependencies = ["PySide6>=6.8,<7"]
+dependencies = ["PySide6==6.8.3"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<9", "pytest-cov>=6,<7", "ruff>=0.8"]
@@ -20,3 +20,4 @@ testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
