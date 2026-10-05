@@ -24,6 +24,13 @@ CONFIG_NAME = "Archivverwaltung/Konfiguration/archive.json"
 
 
 class ArchiveService:
+    def __new__(cls, root: Path, progress=None):
+        from .service import protected, RemoteArchive
+
+        if protected(root):
+            return RemoteArchive(root, progress)
+        return super().__new__(cls)
+
     def __init__(self, root: Path, progress: Callable[[str], None] | None = None):
         self.root = storage.safe_path(root)
         self.progress = progress or (lambda message: None)
@@ -373,6 +380,12 @@ class ArchiveService:
 
                 audit_documentations(a, b, report)
                 audit_local_documentation(self.root, report)
+                if (self.root / "Archivverwaltung/Register/events.jsonl").exists():
+                    from .register import Register
+                    from .snapshots import audit_snapshots
+
+                    Register(self.root).records()
+                    audit_snapshots(self.root, a, b, require_equal=False)
                 allowed = {r["archive_relative"]: r for r in candidates}
                 self._inspect(a, ra, report, allowed, ignore_partials=True)
                 self._inspect(b, rb, report, allowed, ignore_partials=True)
@@ -441,6 +454,34 @@ class ArchiveService:
                                 "Quelle während Lauf geändert",
                             )
                     self._pair(a, b, report)
+                    if (self.root / "Archivverwaltung/Register/events.jsonl").exists():
+                        from .snapshots import (
+                            create_snapshot,
+                            replicate_snapshot,
+                            FOLDER,
+                        )
+
+                        snapshot_folder = storage.child(self.root, FOLDER)
+                        if snapshot_folder.exists():
+                            for previous in snapshot_folder.iterdir():
+                                replicate_snapshot(previous, a, b)
+                        key_folder = self.root.parent / (
+                            "." + self.root.name + "-Schluessel"
+                        )
+                        snapshot = create_snapshot(self.root, key_folder)
+                        replicate_snapshot(snapshot, a, b)
+                        audit_snapshots(self.root, a, b)
+                        if not report.exceptions:
+                            Register(self.root)._append(
+                                "register_backup_verified",
+                                dict(
+                                    ids=[
+                                        r["id"] for r in Register(self.root).records()
+                                    ],
+                                    snapshot=snapshot.name,
+                                    media=report.medium_ids,
+                                ),
+                            )
                     report.success = not report.exceptions
                     for medium in (a, b):
                         Journal(medium / "Journal/events.jsonl").append(
@@ -465,6 +506,12 @@ class ArchiveService:
 
         audit_documentations(a, b, report)
         audit_local_documentation(self.root, report)
+        if (self.root / "Archivverwaltung/Register/events.jsonl").exists():
+            from .register import Register
+            from .snapshots import audit_snapshots
+
+            Register(self.root).records()
+            audit_snapshots(self.root, a, b)
         self._pair(a, b, report)
         return ra, rb
 

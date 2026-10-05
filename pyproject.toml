@@ -7,7 +7,7 @@ name = "zugpferd-gobd-archiv"
 version = "1.0.0"
 description = "GoBD-supporting redundant invoice archive for Windows"
 requires-python = ">=3.12"
-dependencies = ["PySide6==6.8.3"]
+dependencies = ["PySide6==6.8.3", "lxml==6.0.2", "pypdf==6.1.1", "saxonche==12.9.0", "cryptography==46.0.2", "pywin32==311; sys_platform == 'win32'"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<9", "pytest-cov>=6,<7", "ruff>=0.8"]
@@ -20,3 +20,6 @@ testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+zugpferd_archiv = ["validation/**/*"]

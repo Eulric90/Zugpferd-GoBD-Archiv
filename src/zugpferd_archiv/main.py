@@ -10,10 +10,27 @@ from pathlib import Path
 def main() -> int:
     parser = argparse.ArgumentParser(description="GoBD-unterstützende Archivierung")
     parser.add_argument("--root", type=Path)
+    parser.add_argument("--service", action="store_true")
+    parser.add_argument("--provision", action="store_true")
+    parser.add_argument("--medium-a", type=Path)
+    parser.add_argument("--medium-b", type=Path)
+    parser.add_argument("--migrate-from", type=Path)
     parser.add_argument(
         "--smoke-test", action="store_true", help="GUI starten und automatisch beenden"
     )
     args = parser.parse_args()
+    if args.service:
+        from .windows_service import run
+
+        run()
+        return 0
+    if args.provision:
+        if args.root is None:
+            parser.error("--root erforderlich")
+        from .windows_service import provision
+
+        provision(args.root, args.medium_a, args.medium_b, args.migrate_from)
+        return 0
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication
     from .gui import MainWindow
@@ -50,12 +67,22 @@ def main() -> int:
         wizard.setStartId(wizard.pageIds()[-1])
         wizard.restart()
         wizard.show()
+        from .invoice import RULES, inspect_file
+        from .invoice_wizard import InvoiceWizard
+
+        sample = RULES / "sample-cii.xml"
+        inspected = inspect_file(sample)
+        if inspected["critical_errors"]:
+            raise RuntimeError("Gebündelte Offline-Validierung fehlgeschlagen")
+        invoice_wizard = InvoiceWizard(sample, "Eingang", inspected, window)
+        invoice_wizard.show()
 
         def finish():
             if window.worker and window.worker.isRunning():
                 QTimer.singleShot(100, finish)
             else:
                 wizard.close()
+                invoice_wizard.close()
                 window.close()
                 app.quit()
 

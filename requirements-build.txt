@@ -4,3 +4,8 @@ pytest==8.4.2
 ruff==0.11.13
 setuptools==75.8.0
 wheel==0.45.1
+lxml==6.0.2
+pypdf==6.1.1
+saxonche==12.9.0
+cryptography==46.0.2
+pywin32==311

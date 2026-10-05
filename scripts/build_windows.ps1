@@ -11,11 +11,16 @@ python -m ruff check src tests scripts
 if ($LASTEXITCODE -ne 0) { throw 'Statische Prüfung fehlgeschlagen' }
 python -m pytest -q --junitxml=test-results.xml
 if ($LASTEXITCODE -ne 0) { throw 'Tests fehlgeschlagen' }
-python -m PyInstaller --noconfirm --clean --onedir --windowed --name ZugpferdArchiv --paths src scripts/windows_entry.py
+python -m PyInstaller --noconfirm --clean scripts/ZugpferdArchiv.spec
 if ($LASTEXITCODE -ne 0) { throw 'Windows-Packaging fehlgeschlagen' }
 Copy-Item -Recurse docs dist/ZugpferdArchiv/docs
 Copy-Item README.md dist/ZugpferdArchiv/README.md
+Copy-Item scripts/Install-ProtectedArchive.ps1 dist/Install-ProtectedArchive.ps1
+python scripts/collect_licenses.py dist/ZugpferdArchiv/Lizenzen
+if ($LASTEXITCODE -ne 0) { throw 'Lizenzpaket fehlgeschlagen' }
 python scripts/smoke_windows.py dist/ZugpferdArchiv/ZugpferdArchiv.exe
 if ($LASTEXITCODE -ne 0) { throw 'Starttest der Windows-EXE fehlgeschlagen' }
+python scripts/test_windows_protection.py dist/ZugpferdArchiv/ZugpferdArchivService.exe
+if ($LASTEXITCODE -ne 0) { throw 'Dienst- und NTFS-Abnahme fehlgeschlagen' }
 python scripts/package_windows.py
 if ($LASTEXITCODE -ne 0) { throw 'ZIP-Erstellung fehlgeschlagen' }

@@ -2,6 +2,7 @@
 
 import hashlib
 import shutil
+import zipfile
 from pathlib import Path
 
 
@@ -15,6 +16,12 @@ def main() -> None:
             base_dir="ZugpferdArchiv",
         )
     )
+    with archive.open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    with zipfile.ZipFile(archive, "a", compression=zipfile.ZIP_DEFLATED) as package:
+        package.write(
+            output / "Install-ProtectedArchive.ps1", "Install-ProtectedArchive.ps1"
+        )
     with archive.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     archive.with_suffix(".zip.sha256").write_text(

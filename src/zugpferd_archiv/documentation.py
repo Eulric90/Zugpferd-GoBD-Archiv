@@ -30,6 +30,12 @@ FIELD_GROUPS = [
             ("scope", "Geltungsbereich (Bereiche, Standorte, Rechnungsarten)", True),
             ("responsible", "Verantwortliche Person und Zuständigkeit", True),
             ("deputy", "Vertretung und Zuständigkeit", False),
+            ("vat_id", "USt-ID / Steuernummer und steuerlicher Geltungsbereich", False),
+            (
+                "digital_start",
+                "Digitaler Stichtag und Behandlung des Papieraltbestands",
+                False,
+            ),
         ],
     ),
     (
@@ -37,6 +43,16 @@ FIELD_GROUPS = [
         [
             ("receipt_process", "Eingang: Herkunft, Erfassung und Zuordnung", True),
             ("outgoing_process", "Ausgang: Erstellung, Erfassung und Zuordnung", True),
+            (
+                "numbering",
+                "PDF24-Nummernserie, Reservierung und Erklärung von Lücken",
+                False,
+            ),
+            (
+                "mail_process",
+                "Portal/Thunderbird, Originalanhänge und Versandzuordnung",
+                False,
+            ),
             (
                 "completeness_control",
                 "Kontrolle auf Vollständigkeit und richtige Zuordnung",
@@ -94,6 +110,11 @@ FIELD_GROUPS = [
                 True,
             ),
             ("change_note", "Änderungsgrund gegenüber der vorherigen Fassung", False),
+            (
+                "recovery_process",
+                "Wiederherstellungsprobe, Dienstrechte und geschützte Schlüsselsicherung",
+                False,
+            ),
         ],
     ),
 ]
