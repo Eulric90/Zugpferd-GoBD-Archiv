@@ -11,9 +11,14 @@ def main() -> None:
     if os.name != "nt":
         raise SystemExit("Windows required")
     exe = Path(sys.argv[1]).resolve()
+    environment = os.environ.copy()
+    environment.pop("QT_QPA_PLATFORM", None)  # Exercise the native Windows Qt plugin.
     with tempfile.TemporaryDirectory(prefix="zugpferd-starttest-") as root:
         subprocess.run(
-            [str(exe), "--smoke-test", "--root", root], check=True, timeout=60
+            [str(exe), "--smoke-test", "--root", root],
+            check=True,
+            timeout=60,
+            env=environment,
         )
     print("Frozen Windows GUI: start/close smoke test passed")
 
