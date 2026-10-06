@@ -3,6 +3,10 @@ Set-Location (Split-Path $PSScriptRoot -Parent)
 if ([Environment]::OSVersion.Platform -ne 'Win32NT') {
     throw 'Windows-Build muss auf Windows ausgeführt werden (PyInstaller ist kein Cross-Compiler).'
 }
+$tokens = $null
+$parseErrors = $null
+[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Install-ProtectedArchive.ps1'),[ref]$tokens,[ref]$parseErrors) | Out-Null
+if ($parseErrors.Count -gt 0) { throw ('Installer-Syntaxfehler: ' + ($parseErrors | Out-String)) }
 python -m pip install -r requirements-build.txt
 if ($LASTEXITCODE -ne 0) { throw 'Abhängigkeiten konnten nicht installiert werden' }
 python -m pip install --no-deps --no-build-isolation -e .
@@ -11,11 +15,16 @@ python -m ruff check src tests scripts
 if ($LASTEXITCODE -ne 0) { throw 'Statische Prüfung fehlgeschlagen' }
 python -m pytest -q --junitxml=test-results.xml
 if ($LASTEXITCODE -ne 0) { throw 'Tests fehlgeschlagen' }
-python -m PyInstaller --noconfirm --clean --onedir --windowed --name ZugpferdArchiv --paths src scripts/windows_entry.py
+python -m PyInstaller --noconfirm --clean scripts/ZugpferdArchiv.spec
 if ($LASTEXITCODE -ne 0) { throw 'Windows-Packaging fehlgeschlagen' }
 Copy-Item -Recurse docs dist/ZugpferdArchiv/docs
 Copy-Item README.md dist/ZugpferdArchiv/README.md
+Copy-Item scripts/Install-ProtectedArchive.ps1 dist/Install-ProtectedArchive.ps1
+python scripts/collect_licenses.py dist/ZugpferdArchiv/Lizenzen
+if ($LASTEXITCODE -ne 0) { throw 'Lizenzpaket fehlgeschlagen' }
 python scripts/smoke_windows.py dist/ZugpferdArchiv/ZugpferdArchiv.exe
 if ($LASTEXITCODE -ne 0) { throw 'Starttest der Windows-EXE fehlgeschlagen' }
+python scripts/test_windows_protection.py dist/ZugpferdArchiv/ZugpferdArchivService.exe
+if ($LASTEXITCODE -ne 0) { throw 'Dienst- und NTFS-Abnahme fehlgeschlagen' }
 python scripts/package_windows.py
 if ($LASTEXITCODE -ne 0) { throw 'ZIP-Erstellung fehlgeschlagen' }

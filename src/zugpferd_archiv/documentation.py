@@ -30,6 +30,12 @@ FIELD_GROUPS = [
             ("scope", "Geltungsbereich (Bereiche, Standorte, Rechnungsarten)", True),
             ("responsible", "Verantwortliche Person und Zuständigkeit", True),
             ("deputy", "Vertretung und Zuständigkeit", False),
+            ("vat_id", "USt-ID / Steuernummer und steuerlicher Geltungsbereich", False),
+            (
+                "digital_start",
+                "Digitaler Stichtag und Behandlung des Papieraltbestands",
+                False,
+            ),
         ],
     ),
     (
@@ -37,6 +43,16 @@ FIELD_GROUPS = [
         [
             ("receipt_process", "Eingang: Herkunft, Erfassung und Zuordnung", True),
             ("outgoing_process", "Ausgang: Erstellung, Erfassung und Zuordnung", True),
+            (
+                "numbering",
+                "PDF24-Nummernserie, Reservierung und Erklärung von Lücken",
+                False,
+            ),
+            (
+                "mail_process",
+                "Portal/Thunderbird, Originalanhänge und Versandzuordnung",
+                False,
+            ),
             (
                 "completeness_control",
                 "Kontrolle auf Vollständigkeit und richtige Zuordnung",
@@ -94,10 +110,35 @@ FIELD_GROUPS = [
                 True,
             ),
             ("change_note", "Änderungsgrund gegenüber der vorherigen Fassung", False),
+            (
+                "recovery_process",
+                "Wiederherstellungsprobe, Dienstrechte und geschützte Schlüsselsicherung",
+                False,
+            ),
         ],
     ),
 ]
 LOCAL_BASE = "Archivverwaltung/Verfahrensdokumentation/Fassungen"
+LEGACY_FIELDS = {
+    "organization",
+    "address",
+    "scope",
+    "responsible",
+    "deputy",
+    "receipt_process",
+    "outgoing_process",
+    "completeness_control",
+    "access_control",
+    "retention_policy",
+    "backup_schedule",
+    "integrity_schedule",
+    "location_a",
+    "location_b",
+    "incident_process",
+    "change_process",
+    "export_process",
+    "change_note",
+}
 MEDIA_BASE = "Verfahrensdokumentation/Fassungen"
 
 
@@ -163,6 +204,7 @@ def context(service: ArchiveService, a: Path, b: Path) -> dict:
     config = service.configuration()
     return {
         "software_version": __version__,
+        "actor_sid": getattr(service, "actor", ""),
         "root": str(service.root),
         "archive_id": config["archive_id"],
         "media": {
@@ -180,6 +222,7 @@ def new_record(
     normalized = data.normalized()
     return {
         "schema_version": 1,
+        "renderer_version": 2,
         "document_id": document_id or str(uuid4()),
         "version": version,
         "created_at": now(),
@@ -215,6 +258,7 @@ def sections(record: dict) -> list[tuple[str, list[tuple[str, str]]]]:
             [
                 (label, record["answers"].get(key, "") or "Nicht angegeben")
                 for key, label, _ in fields
+                if record.get("renderer_version", 1) >= 2 or key in LEGACY_FIELDS
             ],
         )
         for title, fields in FIELD_GROUPS
@@ -253,7 +297,11 @@ def sections(record: dict) -> list[tuple[str, list[tuple[str, str]]]]:
             (
                 "Arbeitsstruktur",
                 "Eingang/<Jahr>/ und Ausgang/<Jahr>/; Verwaltung unter Archivverwaltung/. "
-                "Alle regulären Dateien werden unverändert übernommen. Es erfolgt keine Rechnungsvalidierung oder Konvertierung.",
+                + (
+                    "Originale mit Beleg-ID getrennt vom Importbereich; Offline-XSD/Schematron und sachliche Gegenprüfung. Originale werden nicht konvertiert."
+                    if record.get("renderer_version", 1) >= 2
+                    else "Alle regulären Dateien werden unverändert übernommen. Es erfolgt keine Rechnungsvalidierung oder Konvertierung."
+                ),
             ),
             (
                 "Archivstruktur",
@@ -314,6 +362,32 @@ def sections(record: dict) -> list[tuple[str, list[tuple[str, str]]]]:
             ),
         ]
     )
+    if record.get("renderer_version", 1) >= 2:
+        technical.extend(
+            [
+                (
+                    "Bearbeitendes Windows-Konto",
+                    ctx.get("actor_sid")
+                    or "Im Dienstjournal als authentifizierte Windows-SID erfasst",
+                ),
+                (
+                    "Belegregister und Nummern",
+                    "Unveränderliche Originale mit interner ID; dauerhafte Jahresreservierungen; begründete Metadatenkorrekturen und Storno-/Berichtigungsbezüge als neue Ereignisse. Prüfung, Versand und A/B-Sicherung sind getrennte Zustände.",
+                ),
+                (
+                    "Rechnungsprüfung",
+                    "CII/UBL XSD und EN16931/XRechnung-Schematron offline. XML ist führend; PDF/XML persönlich gegenprüfen. Parserprozesse sind zeit- und speicherbegrenzt. Ungültige Eingänge erhalten und klären, neue fehlerhafte Ausgänge nicht freigeben.",
+                ),
+                (
+                    "Dienstschutz und Abschlüsse",
+                    "Standardkonten erhalten NTFS-Leserechte. Lokaler Windows-Schreibdienst authentifiziert die Bediener-SID und erweitert nur festgelegte Archivdaten. Signierte vollständige Sicherungsstände auf A/B; privater Schlüssel getrennt geschützt, verschlüsselte Sicherung und unabhängig verwahrter Referenzschlüssel. Admins/andere Rechner bleiben organisatorische Schutzgrenzen.",
+                ),
+                (
+                    "Registerexport und Wiederherstellung",
+                    "Registerexport filtert tatsächliches Rechnungsdatum, enthält CSV/JSON, Originale, XML/Mails, Beziehungen und Nachweise. CSV-Formeln werden neutralisiert. Der bisherige Archivexport behält seinen Quelljahr-/Archivdatumsfilter. Wiederherstellung nur in neuem Ordner, Signatur/Hashes gegen Referenzschlüssel prüfen; Rechte und Schlüssel vor Livebetrieb einrichten.",
+                ),
+            ]
+        )
     result.append(("Automatisch ergänzte technische Beschreibung", technical))
     return result
 

@@ -41,6 +41,44 @@ def test_hash_and_non_destructive_setup(tmp_path):
         assert (tmp_path / "Archivverwaltung" / name).is_dir()
 
 
+def test_register_backup_includes_complete_signed_recovery_and_status(
+    archive, tmp_path
+):
+    from zugpferd_archiv.register import Register
+    from zugpferd_archiv.snapshots import MEDIA_FOLDER
+    from zugpferd_archiv.workflow import restore_snapshot
+
+    service, _, a, b, _, _ = archive
+    source = tmp_path / "new.pdf"
+    source.write_bytes(b"another original")
+    register = Register(service.root, actor="test-SID")
+    record = register.ingest(
+        source,
+        dict(
+            direction="Eingang",
+            number="V123",
+            invoice_date="2026-10-01",
+            partner="Vendor",
+            currency="EUR",
+            net="100",
+            tax="19",
+            gross="119",
+            source="Portal",
+            reviewed=False,
+        ),
+    )
+    result = service.backup(a, b)
+    assert result.success, result.exceptions
+    assert (
+        register.records()[0]["backup_status"] == "A und B rückgelesen und verifiziert"
+    )
+    snapshot = next((a / MEDIA_FOLDER).iterdir())
+    restored = tmp_path / "restored"
+    assert restore_snapshot(snapshot, restored)["verified"]
+    assert (restored / record["original_relative"]).read_bytes() == source.read_bytes()
+    assert service.check(a, b).success
+
+
 def test_registration_identity_and_duplicate_rejection(archive):
     service, source, a, b, ma, mb = archive
     assert ma.archive_id == mb.archive_id
@@ -469,3 +507,16 @@ def test_relative_media_paths_supported(archive, monkeypatch):
     service, source, a, b, _, _ = archive
     monkeypatch.chdir(a.parent)
     assert service.backup(Path("a"), Path("b")).success
+
+
+def test_two_partitions_on_same_device_are_not_redundant_media(tmp_path, monkeypatch):
+    from zugpferd_archiv import media
+
+    a, b = tmp_path / "A", tmp_path / "B"
+    a.mkdir()
+    b.mkdir()
+    ma = media.register(a, "A")
+    mb = media.register(b, "B", ma.archive_id)
+    monkeypatch.setattr(media, "physical_device", lambda root: "disk:1")
+    with pytest.raises(ArchiveError, match="physischen"):
+        media.validate_pair(a, b, ma, mb)

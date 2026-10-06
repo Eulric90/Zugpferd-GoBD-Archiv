@@ -6,7 +6,7 @@ from datetime import date
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QDate, QSettings, QThread, Signal
+from PySide6.QtCore import QDate, QSettings, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
     QWidget,
+    QInputDialog,
 )
 
 from .core import ArchiveService
@@ -54,6 +55,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Zugpferd Archiv 1.0 – GoBD-unterstützende Archivierung")
         self.resize(940, 740)
+        self.setAcceptDrops(True)
         self.settings = QSettings("ZugpferdArchiv", "Desktop") if use_settings else None
         saved = (
             self.settings.value("root", r"C:\Rechnungen")
@@ -75,12 +77,31 @@ class MainWindow(QMainWindow):
         )
         note.setWordWrap(True)
         layout.addWidget(note)
+        self.protection_label = QLabel("Schutzprofil wird geprüft …")
+        self.protection_label.setWordWrap(True)
+        layout.addWidget(self.protection_label)
         row = QHBoxLayout()
         row.addWidget(self.root_edit)
         self.controls.append(self.root_edit)
         self._button(row, "Arbeitsordner wählen", self.choose_root)
         self._button(row, "C:\\Rechnungen anlegen", self.default_root)
         self._button(row, "Struktur anlegen", self.setup)
+        layout.addLayout(row)
+        row = QHBoxLayout()
+        self._button(
+            row, "Eingangsrechnung übernehmen", lambda: self.import_invoice("Eingang")
+        )
+        self._button(
+            row, "Ausgangsrechnung übernehmen", lambda: self.import_invoice("Ausgang")
+        )
+        self._button(row, "Belegregister / offene Aufgaben", self.show_register)
+        layout.addLayout(row)
+        row = QHBoxLayout()
+        self._button(row, "Jahresserie einrichten", self.configure_series)
+        self._button(row, "Nächste Nummer reservieren", self.reserve_number)
+        self._button(row, "Arbeitsanleitung", self.open_instructions)
+        self._button(row, "Betrieb einrichten", self.business_setup)
+        self._button(row, "Schlüssel geschützt sichern", self.backup_key)
         layout.addLayout(row)
         self.media_combos: dict[str, QComboBox] = {}
         self.media_labels: dict[str, QLabel] = {}
@@ -176,6 +197,320 @@ class MainWindow(QMainWindow):
         row.addWidget(button)
         return button
 
+    def import_invoice(self, direction: str, selected_file: str | None = None) -> None:
+        from .invoice import mail_attachments
+        from .inspection import analyze_bounded
+        from .invoice_wizard import InvoiceWizard
+        from .register import Register
+        from . import storage
+        import tempfile
+
+        selected = selected_file
+        if selected is None:
+            selected, _ = QFileDialog.getOpenFileName(
+                self,
+                "Originalrechnung oder Mail auswählen",
+                "",
+                "Rechnungen und Mails (*.pdf *.xml *.eml);;Alle Dateien (*)",
+            )
+        if not selected:
+            return
+        original = Path(selected)
+        temporary = tempfile.TemporaryDirectory(prefix="zugpferd-import-")
+        staging = Path(temporary.name)
+        root = self.root()
+
+        def prepare(progress):
+            source = original
+            items = None
+            if original.suffix.casefold() == ".eml":
+                items = mail_attachments(original.read_bytes())
+                return dict(items=items)
+            return dict(source=source, extracted=analyze_bounded(source))
+
+        def show(value):
+            if "items" in value:
+                items = value["items"]
+                if not items:
+                    self.failed("Keine Mailanhänge gefunden")
+                    temporary.cleanup()
+                    return
+                labels = [
+                    f"{index + 1}: {item['filename']} ({len(item['content'])} Bytes)"
+                    for index, item in enumerate(items)
+                ]
+                selection, accepted = QInputDialog.getItem(
+                    self,
+                    "Mailanhang auswählen",
+                    "Jeden Beleg einzeln übernehmen. Mail wird zugeordnet gespeichert.",
+                    labels,
+                    0,
+                    False,
+                )
+                if not accepted:
+                    temporary.cleanup()
+                    return
+                item = items[labels.index(selection)]
+                source = storage.child(staging, item["filename"])
+                storage.write_new(source, item["content"])
+                self.launch(
+                    lambda progress: dict(
+                        source=source, extracted=analyze_bounded(source)
+                    ),
+                    show,
+                )
+                return
+            source = value["source"]
+            extracted = value["extracted"]
+            wizard = InvoiceWizard(source, direction, extracted, self)
+            if wizard.exec() != QDialog.DialogCode.Accepted:
+                temporary.cleanup()
+                return
+            fields = wizard.data()
+            automatic_backup = wizard.backup_now.isChecked()
+            try:
+                media_pair = (self.medium("A"), self.medium("B"))
+            except ArchiveError:
+                media_pair = None
+
+            def commit(progress):
+                register = Register(root)
+                record = register.ingest(source, fields)
+                if original.suffix.casefold() == ".eml":
+                    register.add_related(
+                        record["id"], original, "Transportmail mit ausgewähltem Beleg"
+                    )
+                if extracted.get("xml"):
+                    xml = staging / "strukturierte-rechnung.xml"
+                    storage.write_new(xml, extracted["xml"])
+                    register.add_related(
+                        record["id"], xml, "Extrahierte XML; Original unverändert"
+                    )
+                temporary.cleanup()
+                report = (
+                    ArchiveService(root, progress).backup(*media_pair)
+                    if automatic_backup and media_pair
+                    else None
+                )
+                return record, report
+
+            def committed(value):
+                record, report = value
+                secured = bool(report and report.success)
+                if report:
+                    self.completed(report)
+                self.status.setText(
+                    f"Lokal übernommen: {record['number']} – "
+                    + (
+                        "A und B verifiziert"
+                        if secured
+                        else "A/B-Sicherung ausstehend; Bericht prüfen"
+                    )
+                )
+                self.log.append(
+                    f"Beleg-ID {record['id']} / {record['original_relative']}"
+                )
+                QMessageBox.information(
+                    self,
+                    "Übernommen",
+                    "Original unverändert lokal abgelegt.\n"
+                    + (
+                        "Automatisch auf A und B gesichert und rückgelesen.\n"
+                        if secured
+                        else "Sicherung offen: beide USB-Medien anschließen und ‚Sichern auf A und B‘ ausführen.\n"
+                    )
+                    + "Ausgänge: exakt diese abgelegte Originaldatei versenden, danach Versand im Register bestätigen.",
+                )
+
+            self.launch(commit, committed)
+
+        self.launch(prepare, show)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls() and all(
+            url.isLocalFile() for url in event.mimeData().urls()
+        ):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        urls = event.mimeData().urls()
+        if len(urls) != 1 or (self.worker and self.worker.isRunning()):
+            return
+        direction, accepted = QInputDialog.getItem(
+            self, "Beleg übernehmen", "Richtung", ["Eingang", "Ausgang"], 0, False
+        )
+        if accepted:
+            self.import_invoice(direction, urls[0].toLocalFile())
+            event.acceptProposedAction()
+
+    def configure_series(self):
+        from .register import Register
+
+        year, accepted = QInputDialog.getInt(
+            self, "Jahresserie", "Jahr", date.today().year, 1, 9999
+        )
+        if not accepted:
+            return
+        separator, accepted = QInputDialog.getItem(
+            self,
+            "Bestehendes Nummernformat",
+            "Bisheriges Trennzeichen beibehalten",
+            ["Keines (20260001)", "- (2026-0001)", "/ (2026/0001)", ". (2026.0001)"],
+            0,
+            False,
+        )
+        if not accepted:
+            return
+        last, accepted = QInputDialog.getInt(
+            self,
+            "Bisheriger Nummernstand",
+            "Letzte tatsächlich vergebene laufende Nummer; NICHT neu bei 0001 beginnen",
+            0,
+            0,
+            9999,
+        )
+        if not accepted:
+            return
+        reason, accepted = QInputDialog.getText(
+            self, "Bestätigung", "Grundlage des geprüften Nummernstands"
+        )
+        if accepted:
+            root = self.root()
+            sep = {"K": "", "-": "-", "/": "/", ".": "."}[separator[0]]
+            self.launch(
+                lambda progress: Register(root).start_series(year, sep, last, reason),
+                lambda result: self.status.setText("Jahresserie bestätigt"),
+            )
+
+    def reserve_number(self):
+        from .register import Register
+
+        year, accepted = QInputDialog.getInt(
+            self, "Nummer reservieren", "Jahr", date.today().year, 1, 9999
+        )
+        if accepted:
+            root = self.root()
+            self.launch(
+                lambda progress: Register(root).reserve(year),
+                lambda number: QMessageBox.information(
+                    self,
+                    "Dauerhaft reserviert",
+                    f"In PDF24 verwenden: {number}\nDiese Nummer wird auch nach Abbruch nicht wieder vergeben.",
+                ),
+            )
+
+    def show_register(self):
+        from .register import Register
+        from .register_view import RegisterView
+
+        root = self.root()
+        self.launch(
+            lambda progress: dict(
+                records=Register(root).records(), tasks=Register(root).tasks()
+            ),
+            lambda result: RegisterView(
+                root, result["records"], self, result["tasks"]
+            ).exec(),
+        )
+
+    def open_instructions(self):
+        from .register_view import InstructionsDialog
+
+        InstructionsDialog(self).exec()
+
+    def business_setup(self):
+        from .register import Register
+        from .setup_wizard import SetupWizard
+
+        root = self.root()
+
+        def show(initial):
+            wizard = SetupWizard(root, initial["values"] if initial else None, self)
+            if wizard.exec() == QDialog.DialogCode.Accepted:
+                values = wizard.data()
+                self.launch(
+                    lambda progress: Register(root).save_setup(values),
+                    lambda result: self.status.setText(
+                        "Betriebsangaben unverändert versioniert; Jahresserie separat bestätigen"
+                    ),
+                )
+
+        self.launch(lambda progress: Register(root).business_setup(), show)
+
+    def backup_key(self):
+        from .service import protected
+        from .snapshots import export_key
+        import base64
+        from . import storage
+
+        root = self.root()
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Neue verschlüsselte Schlüsselsicherung", "Archivschluessel.pem"
+        )
+        if not filename:
+            return
+        if protected(root):
+            from .windows_administration import backup_key_as_admin
+
+            self.launch(
+                lambda progress: backup_key_as_admin(root, Path(filename)),
+                lambda completed: QMessageBox.information(
+                    self,
+                    "Admin-Schlüsselsicherung",
+                    "Verschlüsselte Sicherung und öffentlicher Referenzschlüssel erstellt. Passwort und Referenz unabhängig verwahren."
+                    if completed
+                    else "Admin-Schlüsselsicherung abgebrochen; keine neue Sicherung bestätigt.",
+                ),
+            )
+            return
+        password, accepted = QInputDialog.getText(
+            self,
+            "Schlüsselsicherung",
+            "Mindestens 12 Zeichen; Passwort getrennt sicher verwahren",
+            QLineEdit.EchoMode.Password,
+        )
+        if not accepted:
+            return
+
+        def save(progress):
+            folder = root.parent / ("." + root.name + "-Schluessel")
+            stands = root / "Archivverwaltung/Sicherungsstaende"
+            if (
+                stands.exists()
+                and any(stands.iterdir())
+                and not (folder / "signing-key.pem").is_file()
+            ):
+                raise ArchiveError(
+                    "Vorhandenen Signaturschlüssel wiederherstellen; keinen Ersatzschlüssel erzeugen"
+                )
+            digest = export_key(
+                folder,
+                Path(filename),
+                password,
+            )
+            from cryptography.hazmat.primitives import serialization
+
+            content = Path(filename).read_bytes()
+            key = serialization.load_pem_private_key(
+                content, password=password.encode()
+            )
+            public = base64.b64encode(
+                key.public_key().public_bytes(
+                    serialization.Encoding.Raw, serialization.PublicFormat.Raw
+                )
+            )
+            storage.write_new(Path(filename + ".public-key.txt"), public + b"\n")
+            return digest
+
+        self.launch(
+            save,
+            lambda digest: QMessageBox.information(
+                self,
+                "Schlüssel verschlüsselt gesichert",
+                f"SHA-256: {digest}\nPasswort und Referenzschlüssel getrennt von den drei Archivkopien verwahren.",
+            ),
+        )
+
     def root(self) -> Path:
         text = self.root_edit.text().strip()
         if not text:
@@ -196,7 +531,14 @@ class MainWindow(QMainWindow):
         self.status.setText("Vorgang läuft … Medien angeschlossen lassen.")
         self.worker = Worker(operation, self)
         self.worker.progress.connect(self.log.append)
-        self.worker.result.connect(on_result or self.completed)
+
+        def deliver(value, worker=self.worker):
+            if worker.isRunning():
+                QTimer.singleShot(10, lambda: deliver(value, worker))
+                return
+            (on_result or self.completed)(value)
+
+        self.worker.result.connect(deliver)
         self.worker.error.connect(self.failed)
         self.worker.finished.connect(lambda worker=self.worker: self.idle(worker))
         self.worker.start()
@@ -326,7 +668,26 @@ class MainWindow(QMainWindow):
             except (ArchiveError, OSError):
                 last = None
             matches = []
+            import json
+            from .service import protected
+
+            hints = {}
+            hints_path = root / "Archivverwaltung/Konfiguration/Medienpfade.json"
+            if hints_path.is_file():
+                hints = json.loads(hints_path.read_text(encoding="utf-8"))
             for drive in drives:
+                for role, relative in hints.items():
+                    try:
+                        from .storage import child
+
+                        candidate = (
+                            child(drive.root, relative) if relative else drive.root
+                        )
+                        marker = read_marker(candidate)
+                        if config and marker.medium_uuid == config[role]["medium_uuid"]:
+                            matches.append((role, candidate))
+                    except ArchiveError:
+                        continue
                 try:
                     marker = read_marker(drive.root)
                     if (
@@ -336,10 +697,15 @@ class MainWindow(QMainWindow):
                         matches.append((marker.role, drive.root))
                 except ArchiveError:
                     continue
-            return drives, matches, last
+            return drives, matches, last, protected(root)
 
         def loaded(value):
-            drives, matches, last = value
+            drives, matches, last, is_protected = value
+            self.protection_label.setText(
+                "Geschütztes Windows-Dienstprofil: Bediener erhalten nur Leserechte auf übernommene Belege."
+                if is_protected
+                else "Portabler Modus ohne NTFS-Dienstschutz. Vor dem Livebetrieb geschützte Admin-Installation und Abnahme durchführen."
+            )
             for role, combo in self.media_combos.items():
                 combo.blockSignals(True)
                 combo.clear()
@@ -474,6 +840,48 @@ class MainWindow(QMainWindow):
                 ctx, latest = value
                 pending = bool(latest and not latest["completed"])
                 initial = answers_from(latest) if latest else None
+                if initial is None:
+                    from .register import Register
+
+                    setup = Register(root).business_setup()
+                    if setup:
+                        values = setup["values"]
+                        initial = DocumentationData(
+                            {
+                                key: str(values.get(key, ""))
+                                for key in (
+                                    "organization",
+                                    "address",
+                                    "responsible",
+                                    "deputy",
+                                    "vat_id",
+                                    "digital_start",
+                                    "location_a",
+                                    "location_b",
+                                    "backup_schedule",
+                                )
+                            }
+                            | dict(
+                                scope=str(values.get("accounting_scope", "")),
+                                receipt_process="Originale aus Provider-Portal/Thunderbird; Eingangsassistent, sachliche Prüfung, lokale Übernahme, A/B-Rücklesesicherung; Unklarheiten offen klären.",
+                                outgoing_process="PDF24-ZUGFeRD; reservierte Nummer, XML/PDF gegenprüfen, Ausgangsassistent und Freigabe; exaktes Original manuell mailen und Versand mit Hashvergleich bestätigen.",
+                                numbering="Jahr und vier Stellen; bestehendes Trennzeichen/letzten Stand bestätigen. Reservierungen werden nicht wieder vergeben; Lücken begründen.",
+                                mail_process="Einzelne Rechnung/EML auswählen. Mehrere Rechnungsanhänge getrennt übernehmen; relevante Mail zuordnen. Kein automatischer Versand.",
+                                completeness_control=str(
+                                    values.get("reconciliation", "")
+                                ),
+                                access_control="Persönliche Standardkonten; authentifizierter Windows-Schreibdienst und NTFS-Leserechte. Admin-Abnahme und Schutz der getrennten Signaturschlüssel erforderlich.",
+                                retention_policy="Fristvorschläge je Dokumentart ab Jahresende prüfen, offene Prüfungen/Sperrvermerke beachten; keine Archivlöschfunktion.",
+                                integrity_schedule="Vollprüfung von A/B und signierten Abschlüssen regelmäßig; Berichte prüfen, Referenzschlüssel getrennt verwahren.",
+                                incident_process="Fehler nicht als Erfolg behandeln; Originale erhalten, Vorgang mit gleichen Daten fortsetzen; Medien sicher auswerfen.",
+                                change_process="Originale nie ersetzen. Neue Storno-/Berichtigungsbelege verknüpfen; Metadaten begründet als Ereignis korrigieren.",
+                                export_process="Neutraler Register-/Originalexport nach Rechnungsdatum; index.html und Rechnungen für Steuerberater-Papierordner drucken. Archivdatum ist separater Filter.",
+                                recovery_process=str(
+                                    values.get("recovery_schedule", "")
+                                )
+                                + "; isolierter neuer Ordner; Schlüssel verschlüsselt sichern, Dienst/NTFS vor Livebetrieb neu einrichten.",
+                            )
+                        )
                 if initial and not pending:
                     initial = DocumentationData(initial.values, approved=False)
                 wizard = DocumentationWizard(

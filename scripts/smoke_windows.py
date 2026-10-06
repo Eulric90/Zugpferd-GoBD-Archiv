@@ -20,7 +20,9 @@ def main() -> None:
             timeout=60,
             env=environment,
         )
-    print("Frozen Windows GUI and documentation wizard: start/close smoke test passed")
+    print(
+        "Frozen Windows GUI, invoice/documentation wizards and offline validation: smoke test passed"
+    )
 
 
 if __name__ == "__main__":
