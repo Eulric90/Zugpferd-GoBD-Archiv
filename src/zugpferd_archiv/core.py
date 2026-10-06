@@ -9,7 +9,10 @@ from contextlib import ExitStack
 from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
-from typing import Callable
+from typing import Callable, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .documentation import DocumentationData
 
 from . import storage
 from .errors import ArchiveError
@@ -363,6 +366,13 @@ class ArchiveService:
                             "Quelle geändert; bestehende Historie bleibt erhalten",
                         )
                 self._compare_records(ra, rb, report, require_equal=False)
+                from .documentation import (
+                    audit_documentations,
+                    audit_local_documentation,
+                )
+
+                audit_documentations(a, b, report)
+                audit_local_documentation(self.root, report)
                 allowed = {r["archive_relative"]: r for r in candidates}
                 self._inspect(a, ra, report, allowed, ignore_partials=True)
                 self._inspect(b, rb, report, allowed, ignore_partials=True)
@@ -451,6 +461,10 @@ class ArchiveService:
         self._inspect(a, ra, report)
         self._inspect(b, rb, report)
         self._compare_records(ra, rb, report)
+        from .documentation import audit_documentations, audit_local_documentation
+
+        audit_documentations(a, b, report)
+        audit_local_documentation(self.root, report)
         self._pair(a, b, report)
         return ra, rb
 
@@ -472,6 +486,11 @@ class ArchiveService:
 
     def compare(self, a: Path, b: Path) -> Report:
         return self._check(a, b, "comparison")
+
+    def create_documentation(self, a: Path, b: Path, data: DocumentationData) -> Report:
+        from .documentation import save_documentation
+
+        return save_documentation(self, a, b, data)
 
     def last_backup(self) -> dict | None:
         rows = Journal(

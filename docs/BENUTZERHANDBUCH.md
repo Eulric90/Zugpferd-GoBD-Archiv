@@ -119,3 +119,59 @@ kontrolliert. Flush und Rückleseprüfung ersetzen keine Hardware-/Stromausfalls
 
 Die Software allein garantiert keine GoBD-Konformität; siehe die betriebliche
 Vorlage in `VERFAHRENSDOKUMENTATION.md`.
+
+## Assistent für die Verfahrensdokumentation
+
+`Verfahrensdokumentation erstellen` startet den Assistenten. Voraussetzung sind
+registrierte, zugeordnete und angeschlossene Medien A und B sowie eine intakte
+Archivhistorie. Der Assistent fragt die tatsächlichen betrieblichen Angaben ab:
+
+1. Unternehmen, Anschrift, Geltungsbereich, Verantwortliche und Vertretung.
+2. Rechnungseingang/-ausgang, Vollständigkeitskontrolle, Zugriffsrechte und Aufbewahrung.
+3. Sicherungs- und Prüfrhythmus sowie physische Kennzeichnung und Aufbewahrung beider Medien.
+4. Fehlerbehandlung, geänderte Quellen, Export und optional der Änderungsgrund.
+5. Vorschau, Gültigkeitsdatum und optional die betriebliche Freigabe mit freigebender Person.
+
+Die technischen Angaben – Softwareversion, Arbeitsordner, Archiv-ID, Medien-UUIDs,
+Volume-Kennungen und der letzte Sicherungslauf – sowie die Beschreibung der
+Archivierung und ihrer Grenzen ergänzt die Anwendung automatisch. Pfade und
+Sicherungsstatus sind eine Momentaufnahme zum Erstellzeitpunkt. Betriebliche
+Abläufe und Aufbewahrungsfristen werden vom Betreiber eingegeben und nicht von
+der Software rechtlich beurteilt. Der Inhalt muss der tatsächlichen Nutzung entsprechen.
+
+Standardmäßig wird ein **Entwurf** erstellt. `Angaben betrieblich geprüft und
+freigegeben` kennzeichnet eine vom Betreiber freigegebene Fassung; diese Eingabe
+ist keine digitale Signatur, rechtliche Zertifizierung oder Garantie der GoBD-Konformität.
+
+`Fassung speichern und A/B prüfen` speichert eine neue, unveränderliche Fassung:
+
+- Arbeitsablage: `Archivverwaltung/Verfahrensdokumentation/Fassungen/<Dokument-ID>/`
+- Beide Archivmedien: `Verfahrensdokumentation/Fassungen/<Dokument-ID>/`
+
+Enthalten sind `Verfahrensdokumentation.html` (druckbar),
+`Verfahrensdokumentation.md`, `document.json` (Angaben und technische Momentaufnahme)
+und `checksums.json` (SHA-256-Prüfsummen). Jede Kopie wird vom Ziel zurückgelesen.
+Die Archivjournale verzeichnen die gespeicherte Fassung und die Dateihashes.
+Die lokale `completion.json` wird erst nach vollständiger Speicherung und
+Prüfung auf beiden Medien erstellt. Erst dann gibt die Oberfläche Erfolg aus.
+Berichte zeigen die lokalen Dateipfade. Die Dokumentation enthält betriebliche
+und personenbezogene Angaben; die festgelegten Zugriffsrechte gelten auch hierfür.
+
+`Gespeicherte Dokumentation öffnen` öffnet die letzte abgeschlossene Fassung im
+Browser. Mit **Drucken → Als PDF speichern** lässt sich daraus bei Bedarf eine PDF
+erstellen. Die Anwendung erzeugt selbst HTML, Markdown und JSON, keine PDF-Datei.
+
+Bei einer späteren Änderung den Assistenten erneut starten. Die bisherigen
+Angaben sind vorbelegt; eine neue Fassung beginnt wieder als Entwurf und ersetzt
+keine ältere Datei. Eine laufende Fassung wird bei `Abbrechen` nicht gespeichert.
+
+Falls A/B-Speicherung unterbrochen wurde, bietet der Assistent die ausstehende
+Fassung unverändert zur erneuten Speicherung an. Erst diese abschließen, dann
+eine geänderte Fassung erzeugen. Identische bereits kopierte Dateien bleiben
+unverändert, widersprüchliche Ziele werden nicht überschrieben. Beschädigte oder
+fehlende bereits im Journal verzeichnete Dokumentationsdateien werden nicht
+still repariert. Temporäre Kopien bleiben als erkennbare Belege erhalten; eine
+erfolgreiche Wiederaufnahme kann darauf mit einer Warnung hinweisen. Die Vollprüfung
+meldet ausstehende Fassungen, fehlende/veränderte Dokumentationsdateien,
+unbekannte Dateien und verbliebene temporäre Kopien. Eine unvollständige
+Dokumentationsfassung blockiert auch neue Sicherungen, bis sie abgeschlossen ist.
