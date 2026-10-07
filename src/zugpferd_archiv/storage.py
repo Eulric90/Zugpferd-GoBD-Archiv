@@ -66,47 +66,19 @@ def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for block in i
+
 ter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
 
 
-def _flush_volume_windows(path: Path) -> None:
-    # FlushFileBuffers needs a volume handle with write access, which usually
-    # requires elevation; non-admin callers keep the previous best-effort
-    # behavior (file fsync plus NTFS journaling) when the volume is closed.
-    drive = path.resolve().drive
-    if not drive or drive.startswith("\\\\"):
-        return
-    import ctypes
-
-    kernel32 = ctypes.windll.kernel32
-    handle = kernel32.CreateFileW(
-        f"\\\\.\\{drive}",
-        0x40000000,  # GENERIC_WRITE
-        0,
-        None,
-        3,  # OPEN_EXISTING
-        0,
-        None,
-    )
-    if handle in (-1, 0xFFFFFFFF, 0xFFFFFFFFFFFFFFFF):
-        return
-    try:
-        kernel32.FlushFileBuffers(handle)
-    finally:
-        kernel32.CloseHandle(handle)
-
-
 def sync_directory(path: Path) -> None:
-    if os.name == "nt":
-        _flush_volume_windows(path)
-        return
-    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+    if os.name != "nt":
+        descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
 
 
 def write_new(path: Path, data: bytes) -> None:
@@ -137,7 +109,8 @@ def read_lines(path: Path) -> list[dict]:
     if raw and not raw.endswith(b"\n"):
         raise ArchiveError(f"Unterbrochene Metadaten: {path}")
     try:
-        rows = [json.loads(line) for line in raw.splitlines()]
+        rows = [json.loads(line) for l
+ine in raw.splitlines()]
         if any(not isinstance(row, dict) for row in rows):
             raise ValueError("not an object")
         return rows
@@ -187,58 +160,15 @@ def verified_copy(source: Path, destination: Path, expected: str) -> bool:
     return True
 
 
-def _process_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    if os.name == "nt":
-        import ctypes
-
-        kernel32 = ctypes.windll.kernel32
-        handle = kernel32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFO
-        if not handle:
-            return False
-        try:
-            exit_code = ctypes.c_ulong()
-            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
-                return False
-            return exit_code.value == 259  # STILL_ACTIVE
-        finally:
-            kernel32.CloseHandle(handle)
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
-def _remove_stale_lock(path: Path) -> bool:
-    try:
-        rows = read_lines(path)
-        pid = rows[-1].get("pid") if rows else None
-    except ArchiveError:
-        return False  # Unlesbare Sperrdatei bleibt manuell zu klären.
-    if not isinstance(pid, int) or _process_alive(pid):
-        return False
-    path.unlink()  # Nur die Sperrdatei eines toten Prozesses, nie ein Original.
-    sync_directory(path.parent)
-    return True
-
-
 @contextmanager
 def exclusive_lock(root: Path) -> Iterator[None]:
     path = safe_path(root / ".zugpferd-operation.lock")
-    payload = canonical({"pid": os.getpid(), "operation": str(uuid4())})
     try:
-        write_new(path, payload)
-    except FileExistsError:
-        if not _remove_stale_lock(path):
-            raise ArchiveError(
-                f"Medium/Arbeitsordner gesperrt: {path}. Laufende Operation "
-                "oder unlesbare Sperrdatei; nach Absturz manuell prüfen."
-            )
-        write_new(path, payload)
+        write_new(path, canonical({"pid": os.getpid(), "operation": str(uuid4())}))
+    except FileExistsError as exc:
+        raise ArchiveError(
+            f"Medium/Arbeitsordner gesperrt: {path}. Nach Absturz manuell prüfen."
+        ) from exc
     try:
         yield
     finally:
