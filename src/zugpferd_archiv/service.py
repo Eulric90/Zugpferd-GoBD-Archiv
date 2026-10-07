@@ -57,7 +57,8 @@ class Dispatcher:
                 raise ArchiveError("Ungültiger Importdateiname")
             self.staging.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory(dir=self.staging) as directory:
-                source = storage.child(Path(directory), filename)
+                source = storage.chil
+d(Path(directory), filename)
                 raw = base64.b64decode(request["content"], validate=True)
                 if len(raw) > 64 * 1024 * 1024:
                     raise ArchiveError("Import überschreitet Größenlimit")
@@ -105,7 +106,8 @@ class Dispatcher:
             "close_period": 3,
             "save_setup": 1,
             "business_setup": 0,
-            "start_series": 4,
+            "
+start_series": 4,
             "reserve": 1,
             "records": 0,
             "events": 0,
@@ -126,7 +128,11 @@ class Dispatcher:
         if operation == "mark_sent":
             identity, sent_date, recipient, digest = request["args"]
             register = Register(self.root, actor=actor)
-            record = next(r for r in register.records() if r["id"] == identity)
+            record = next(
+                (r for r in register.records() if r["id"] == identity), None
+            )
+            if record is None:
+                raise ArchiveError("Unbekannte Beleg-ID")
             if digest != record["sha256"]:
                 raise ArchiveError(
                     "Versand-Anhang entspricht nicht archiviertem Original"
@@ -151,7 +157,8 @@ class Dispatcher:
             if (
                 stands.exists()
                 and any(stands.iterdir())
-                and not (folder / "signing-key.pem").is_file()
+                and not (folder / "signing-key.pem").is_f
+ile()
             ):
                 raise ArchiveError(
                     "Abschlussschlüssel fehlt; vorhandene Schlüsselsicherung geschützt wiederherstellen"
@@ -201,7 +208,8 @@ class Dispatcher:
             return service.create_documentation(
                 Path(args[0]), Path(args[1]), DocumentationData(**args[2])
             ).data()
-        if operation == "export":
+        if operation == "export"
+:
             args = request["args"]
             # The service cannot write to a caller-selected destination. User process
             # exports verified read-only originals after the service has audited A/B.
@@ -255,7 +263,8 @@ def request(payload: dict):
                     "Named-Pipe-Server ist nicht der eingerichtete Windows-Dienst"
                 )
         finally:
-            win32service.CloseServiceHandle(service)
+      
+      win32service.CloseServiceHandle(service)
             win32service.CloseServiceHandle(manager)
         win32pipe.SetNamedPipeHandleState(
             handle, win32pipe.PIPE_READMODE_MESSAGE, None, None
@@ -315,7 +324,8 @@ class RemoteRegister:
             dict(
                 operation="ingest",
                 filename=source.name,
-                content=base64.b64encode(source.read_bytes()).decode(),
+                content=base64.b64encode(source.read_
+bytes()).decode(),
                 fields=fields,
                 source_metadata=dict(
                     path=str(source),
@@ -381,6 +391,7 @@ class RemoteArchive:
             raise AttributeError(operation)
 
         def call(*args):
+
             serialized = [
                 asdict(arg)
                 if hasattr(arg, "__dataclass_fields__")
@@ -433,7 +444,8 @@ class RemoteArchive:
             storage.verified_copy(
                 storage.child(a, record["archive_relative"]),
                 storage.child(target, "Originale/" + record["source_relative"]),
-                record["sha256"],
+                record["sha
+256"],
             )
         storage.write_new(
             target / "index.json",
@@ -493,7 +505,8 @@ def serve(config: dict, stop=None):
                     raise
             if stop and stop():
                 break
-            raw = win32file.ReadFile(pipe, MAX_REQUEST)[1]
+            raw = win32file.ReadFile(pipe, 
+MAX_REQUEST)[1]
             win32security.ImpersonateNamedPipeClient(pipe)
             try:
                 token = win32security.OpenThreadToken(
@@ -536,7 +549,8 @@ def serve(config: dict, stop=None):
             win32file.FlushFileBuffers(pipe)
         except ArchiveError as exc:
             try:
-                win32file.WriteFile(
+   
+             win32file.WriteFile(
                     pipe, storage.canonical(dict(ok=False, error=str(exc)))
                 )
             except pywintypes.error:

@@ -2,15 +2,22 @@
 
 import hashlib
 import shutil
+import tomllib
 import zipfile
 from pathlib import Path
+
+
+def project_version() -> str:
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    with pyproject.open("rb") as stream:
+        return tomllib.load(stream)["project"]["version"]
 
 
 def main() -> None:
     output = Path("dist")
     archive = Path(
         shutil.make_archive(
-            str(output / "ZugpferdArchiv-1.0.0-Windows-x64"),
+            str(output / f"ZugpferdArchiv-{project_version()}-Windows-x64"),
             "zip",
             root_dir=output,
             base_dir="ZugpferdArchiv",
