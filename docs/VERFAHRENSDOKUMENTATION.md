@@ -29,8 +29,7 @@ Erfolgsmeldung geprüft. Alte Archivobjekte werden weder ersetzt noch gelöscht.
 
 Das Manifest enthält Originalnamen, relativen Quellpfad, Zielpfad, Größe,
 Quellzeitstempel (mtime/ctime in Nanosekunden; ctime ist plattformabhängig),
-UTC-Archivierung
-szeitpunkt, Archiv-ID und SHA-256. Journal-Anhänge sind canonical
+UTC-Archivierungszeitpunkt, Archiv-ID und SHA-256. Journal-Anhänge sind canonical
 JSON (sortierte Schlüssel, UTF-8, kompakte Trenner), mit Sequenz, Zeit, Ereignis,
 Daten, Vorgängerhash und Eintragshash. Die Eintragshashes schließen den eigenen
 Hash aus der Berechnung aus. Das Journal ist manipulationsanzeigend, kein
@@ -46,15 +45,15 @@ und Export sind betrieblich zu dokumentieren. V1 enthält keine Archivlöschfunk
 
 ## Abschlussschlüssel-Speicherung (technische Festlegung)
 
-Der Ed25519-Abschlussschlüssel für signierte Sicherungsstände liegt als
-unverschlüsseltes PEM im separaten Schlüsselordner neben dem Archivstamm.
-Der Schutz beruht auf NTFS-Zugriffsrechten (Eigentümer und DACL werden bei der
-geschützten Einrichtung geprüft), nicht auf einer Passwort-Verschlüsselung;
-die POSIX-Rechte (0o600) sind nur eine zusätzliche Absicherung. Jede externe
-Schlüsselsicherung wird ausschließlich verschlüsselt (PKCS8, mindestens 12
-Zeichen Passwort) exportiert und gegen einen unabhängigen Referenzschlüssel
-geprüft wiederhergestellt. Diese Festlegung ist vom Betreiber zu prüfen und
-freizugeben.
+Der Abschlussschlüssel (Ed25519) wird als PEM-Datei unverschlüsselt unter dem
+Archiveintrag abgelegt. Der Schutzmechanismus ist die NTFS-ACL des Archivordners:
+Nur das Dienstkonto und Administratoren erhalten Zugriff. Ein versiegeltes
+Jahresmedium wird ohne Abschlussschlüssel im klaren Betrieb fertiggestellt.
+
+Für Sicherung und Wiederherstellung des Abschlussschlüssels existiert ein
+verschlüsselter Export (Passwort), sodass die PEM-Datei selbst niemals im
+Klartext den Archivordner verlässt. Der Restore prüft die Schlüsselidentität,
+bevor bestehende A/B-Medien weiterverwendet werden.
 
 ## Ausgefüllte Fassung über den Assistenten erzeugen
 

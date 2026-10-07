@@ -65,37 +65,32 @@ def sha256(path: Path) -> str:
     safe_path(path)
     digest = hashlib.sha256()
     with path.open("rb") as stream:
-        for block in i
-ter(lambda: stream.read(1024 * 1024), b""):
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
 
 
 def _flush_volume_windows(path: Path) -> None:
-    # FlushFileBuffers needs a volume handle with write access, which usually
-    # requires elevation; non-admin callers keep the previous best-effort
-    # behavior (file fsync plus NTFS journaling) when the volume is closed.
-    drive = path.resolve().drive
-    if not drive or drive.startswith("\\\\"):
-        return
     import ctypes
 
-    kernel32 = ctypes.windll.kernel32
-    handle = kernel32.CreateFileW(
-        f"\\\\.\\{drive}",
-        0x40000000,  # GENERIC_WRITE
+    GENERIC_WRITE = 0x40000000
+    OPEN_EXISTING = 3
+    handle = ctypes.windll.kernel32.CreateFileW(
+        "\\\\.\\" + os.path.abspath(path).split("\\", 1)[0],
+        GENERIC_WRITE,
         0,
         None,
-        3,  # OPEN_EXISTING
+        OPEN_EXISTING,
         0,
         None,
     )
-    if handle in (-1, 0xFFFFFFFF, 0xFFFFFFFFFFFFFFFF):
-        return
+    if handle == -1:
+        raise ctypes.WinError()
     try:
-        kernel32.FlushFileBuffers(handle)
+        if not ctypes.windll.kernel32.FlushFileBuffers(handle):
+            raise ctypes.WinError()
     finally:
-        kernel32.CloseHandle(handle)
+        ctypes.windll.kernel32.CloseHandle(handle)
 
 
 def sync_directory(path: Path) -> None:
@@ -159,7 +154,6 @@ def publish_new(temp: Path, destination: Path) -> None:
         os.rename(temp, destination)
     else:
         os.link(temp, destination)
-
         temp.unlink()  # Only our verified temporary hard link, never an original.
     sync_directory(destination.parent)
 
@@ -188,57 +182,57 @@ def verified_copy(source: Path, destination: Path, expected: str) -> bool:
 
 
 def _process_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
     if os.name == "nt":
         import ctypes
 
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
         kernel32 = ctypes.windll.kernel32
-        handle = kernel32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFO
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if not handle:
             return False
         try:
-            exit_code = ctypes.c_ulong()
-            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
-                return False
-            return exit_code.value == 259  # STILL_ACTIVE
+            code = ctypes.c_ulong()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return True
+            return code.value == STILL_ACTIVE
         finally:
             kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
-    except ProcessLookupError:
+    except OSError:
         return False
-    except PermissionError:
-        return True
     return True
 
 
-def _remove_stale_lock(path: Path) -> bool:
+def _remove_stale_lock(path: Path) -> None:
+    pid = None
     try:
         rows = read_lines(path)
-        pid = rows[-1].get("pid") if rows else None
-    except ArchiveError:
-        return False  # Unlesbare Sperrdatei bleibt manuell zu klären.
-    if not isinstance(pid, int) or _process_alive(pid):
-        return False
-    path.unlink()  # Nur die Sperrdatei eines toten Prozesses, nie ein Original.
-    sync_directory(path.parent)
-    return True
+        if rows and isinstance(rows[-1].get("pid"), int):
+            pid = rows[-1]["pid"]
+    except Exception:
+        pid = None
+    if pid is None or _process_alive(pid):
+        raise ArchiveError(
+            f"Medium/Arbeitsordner gesperrt: {path}. Nach Absturz manuell prüfen."
+        )
+    path.unlink()
 
 
 @contextmanager
 def exclusive_lock(root: Path) -> Iterator[None]:
     path = safe_path(root / ".zugpferd-operation.lock")
-    payload = canonical({"pid": os.getpid(), "operation": str(uuid4())})
     try:
-        write_new(path, payload)
+        write_new(path, canonical({"pid": os.getpid(), "operation": str(uuid4())}))
     except FileExistsError:
-        if not _remove_stale_lock(path):
+        _remove_stale_lock(path)
+        try:
+            write_new(path, canonical({"pid": os.getpid(), "operation": str(uuid4())}))
+        except FileExistsError as exc:
             raise ArchiveError(
-                f"Medium/Arbeitsordner gesperrt: {path}. Laufende Operation "
-                "oder unlesbare Sperrdatei; nach Absturz manuell prüfen."
-            )
-        write_new(path, payload)
+                f"Medium/Arbeitsordner gesperrt: {path}. Nach Absturz manuell prüfen."
+            ) from exc
     try:
         yield
     finally:

@@ -66,8 +66,7 @@ class Register:
             "address",
             "vat_id",
             "responsible",
-            "
-deputy",
+            "deputy",
             "digital_start",
         )
         if any(not str(values.get(key, "")).strip() for key in required):
@@ -113,8 +112,7 @@ deputy",
                     dict(
                         kind="review",
                         id=record["id"],
-                        detail="Sachliche/technische Klärung 
-offen",
+                        detail="Sachliche/technische Klärung offen",
                     )
                 )
             if record["direction"] == "Ausgang" and record["status"] not in (
@@ -160,8 +158,7 @@ offen",
                 for path in folder.rglob("*"):
                     if (
                         path.is_file()
-                        and 
-path.relative_to(self.root).as_posix() not in known_files
+                        and path.relative_to(self.root).as_posix() not in known_files
                     ):
                         result.append(
                             dict(
@@ -210,8 +207,7 @@ path.relative_to(self.root).as_posix() not in known_files
             )
         return state
 
-    def start_series(self, year: int, sepa
-rator: str, last: int, reason: str) -> None:
+    def start_series(self, year: int, separator: str, last: int, reason: str) -> None:
         if not (
             1 <= year <= 9999
             and separator in ("", "-", "/", ".")
@@ -257,8 +253,7 @@ rator: str, last: int, reason: str) -> None:
                 record = records[data["id"]]
                 if any(record.get(k) != v for k, v in data["before"].items()):
                     raise ArchiveError("Registerkorrektur widerspricht Vorgänger")
-  
-              record.update(data["changes"])
+                record.update(data["changes"])
                 record["backup_status"] = "Lokal geändert – A/B ausstehend"
             elif entry["event"] == "related_file":
                 records[data["id"]].setdefault("related_files", []).append(data["file"])
@@ -307,8 +302,7 @@ rator: str, last: int, reason: str) -> None:
             "service_period",
             "reference",
             "payment_reference",
-            "_source_metadat
-a",
+            "_source_metadata",
         }
         if set(fields) - allowed_fields:
             raise ArchiveError("Unzulässige Belegfelder")
@@ -355,8 +349,7 @@ a",
         if not re.fullmatch(r"[A-Z]{3}", fields["currency"]):
             raise ArchiveError("Währung muss dreistellig sein")
         if amount(fields["net"]) + amount(fields["tax"]) != amount(fields["gross"]):
-            raise ArchiveError("Summen: Netto pl
-us Steuer entspricht nicht Brutto")
+            raise ArchiveError("Summen: Netto plus Steuer entspricht nicht Brutto")
         digest = storage.sha256(source)
         if validation.get("source_sha256") and validation["source_sha256"] != digest:
             raise ArchiveError(
@@ -396,8 +389,7 @@ us Steuer entspricht nicht Brutto")
                 }
                 if fields["number"] in assigned:
                     raise ArchiveError(
-                        "Historisch vergebene Ausgangsnummer darf nicht erneut verwendet w
-erden"
+                        "Historisch vergebene Ausgangsnummer darf nicht erneut verwendet werden"
                     )
             if fields["direction"] == "Ausgang" and not fields.get("historical"):
                 state = self.series(invoice_date.year)
@@ -437,8 +429,7 @@ erden"
                     if item["id"] not in committed and item["sha256"] == digest:
                         if any(item.get(key) != value for key, value in fields.items()):
                             raise ArchiveError(
-                                "Offener Import mit abweichenden Daten; ursprünglichen Vo
-rgang fortsetzen"
+                                "Offener Import mit abweichenden Daten; ursprünglichen Vorgang fortsetzen"
                             )
                         identity = item["id"]
                         pending_record = item
@@ -490,8 +481,7 @@ rgang fortsetzen"
         allowed = {
             "partner",
             "number",
-    
-        "invoice_date",
+            "invoice_date",
             "service_period",
             "reference",
             "payment_reference",
@@ -534,8 +524,7 @@ rgang fortsetzen"
                     )
                     if not equal:
                         raise ArchiveError(
-                            "Korrektur widerspricht führend
-er XML; Berichtigung als neuen Beleg archivieren"
+                            "Korrektur widerspricht führender XML; Berichtigung als neuen Beleg archivieren"
                         )
             if changes.get("status") == "freigegeben" and record.get("critical_errors"):
                 raise ArchiveError("Technische Fehler offen; keine Freigabe")
@@ -579,8 +568,7 @@ er XML; Berichtigung als neuen Beleg archivieren"
             ):
                 if any(
                     e["event"] == "invoice_imported"
-                    and e["data"]["
-record"]["direction"] == "Ausgang"
+                    and e["data"]["record"]["direction"] == "Ausgang"
                     and e["data"]["record"]["number"] == changes["number"]
                     for e in self.events()
                 ):
@@ -626,8 +614,7 @@ record"]["direction"] == "Ausgang"
             raise ArchiveError("Unbekannte Beleg-ID")
         date.fromisoformat(sent_date)
         if record["direction"] != "Ausgang" or not recipient.strip():
-            raise ArchiveError("Versand braucht Ausgangsrec
-hnung und Empfänger")
+            raise ArchiveError("Versand braucht Ausgangsrechnung und Empfänger")
         if not record.get("historical") and (
             record["status"] not in ("freigegeben", "versandt")
             or record.get("critical_errors")
@@ -661,9 +648,7 @@ hnung und Empfänger")
 
     def add_related(self, identity: str, source: Path, kind: str) -> dict:
         with storage.exclusive_lock(self.root):
-            record = next(
-                (r for r in self.records() if r["id"] == identity), None
-            )
+            record = next((r for r in self.records() if r["id"] == identity), None)
             if record is None:
                 raise ArchiveError("Unbekannte Beleg-ID")
             digest = storage.sha256(source)
@@ -674,8 +659,7 @@ hnung und Empfänger")
                 str(Path(record["original_relative"]).parent.as_posix())
                 + f"/Nachweise/{uuid.uuid4()}/{source.name}"
             )
-            storage.verified_copy
-(source, storage.child(self.root, relative), digest)
+            storage.verified_copy(source, storage.child(self.root, relative), digest)
             item = dict(path=relative, sha256=digest, kind=kind, filename=source.name)
             self._append("related_file", dict(id=identity, file=item))
             return item

@@ -72,8 +72,7 @@ vom Betreiber geprüft und in der Praxis umgesetzt werden.
 - Belegregister mit dauerhaften Jahresnummernreservierungen, Korrekturhistorie,
   Storno-/Berichtigungsbezügen, Versandnachweis mit Anhang-Hashvergleich und offenen Aufgaben.
 - Persönliche Windows-SIDs, geschützter lokaler Schreibdienst, NTFS-Leserechte,
-  signier
-te vollständige Sicherungsstände und verschlüsselte Schlüsselsicherung.
+  signierte vollständige Sicherungsstände und verschlüsselte Schlüsselsicherung.
 - Registersuche, Fristvorschläge/Sperrvermerke, neutraler CSV/JSON-/Originalexport,
   druckbare Arbeitsanleitung und Wiederherstellung in einem neuen Ordner.
 
