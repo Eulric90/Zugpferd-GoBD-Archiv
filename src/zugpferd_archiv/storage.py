@@ -74,11 +74,13 @@ def _flush_volume_windows(path: Path) -> None:
     import ctypes
 
     GENERIC_WRITE = 0x40000000
+    FILE_SHARE_READ = 1
+    FILE_SHARE_WRITE = 2
     OPEN_EXISTING = 3
     handle = ctypes.windll.kernel32.CreateFileW(
         "\\\\.\\" + os.path.abspath(path).split("\\", 1)[0],
         GENERIC_WRITE,
-        0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
         None,
         OPEN_EXISTING,
         0,
