@@ -70,13 +70,40 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _flush_volume_windows(path: Path) -> None:
+    import ctypes
+
+    GENERIC_WRITE = 0x40000000
+    FILE_SHARE_READ = 1
+    FILE_SHARE_WRITE = 2
+    OPEN_EXISTING = 3
+    handle = ctypes.windll.kernel32.CreateFileW(
+        "\\\\.\\" + os.path.abspath(path).split("\\", 1)[0],
+        GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        None,
+        OPEN_EXISTING,
+        0,
+        None,
+    )
+    if handle == -1:
+        raise ctypes.WinError()
+    try:
+        if not ctypes.windll.kernel32.FlushFileBuffers(handle):
+            raise ctypes.WinError()
+    finally:
+        ctypes.windll.kernel32.CloseHandle(handle)
+
+
 def sync_directory(path: Path) -> None:
-    if os.name != "nt":
-        descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
+    if os.name == "nt":
+        _flush_volume_windows(path)
+        return
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def write_new(path: Path, data: bytes) -> None:
@@ -156,15 +183,58 @@ def verified_copy(source: Path, destination: Path, expected: str) -> bool:
     return True
 
 
+def _process_alive(pid: int) -> bool:
+    if os.name == "nt":
+        import ctypes
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return True
+            return code.value == STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _remove_stale_lock(path: Path) -> None:
+    pid = None
+    try:
+        rows = read_lines(path)
+        if rows and isinstance(rows[-1].get("pid"), int):
+            pid = rows[-1]["pid"]
+    except Exception:
+        pid = None
+    if pid is None or _process_alive(pid):
+        raise ArchiveError(
+            f"Medium/Arbeitsordner gesperrt: {path}. Nach Absturz manuell prüfen."
+        )
+    path.unlink()
+
+
 @contextmanager
 def exclusive_lock(root: Path) -> Iterator[None]:
     path = safe_path(root / ".zugpferd-operation.lock")
     try:
         write_new(path, canonical({"pid": os.getpid(), "operation": str(uuid4())}))
-    except FileExistsError as exc:
-        raise ArchiveError(
-            f"Medium/Arbeitsordner gesperrt: {path}. Nach Absturz manuell prüfen."
-        ) from exc
+    except FileExistsError:
+        _remove_stale_lock(path)
+        try:
+            write_new(path, canonical({"pid": os.getpid(), "operation": str(uuid4())}))
+        except FileExistsError as exc:
+            raise ArchiveError(
+                f"Medium/Arbeitsordner gesperrt: {path}. Nach Absturz manuell prüfen."
+            ) from exc
     try:
         yield
     finally:

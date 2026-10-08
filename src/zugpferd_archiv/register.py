@@ -609,7 +609,9 @@ class Register:
     def mark_sent(
         self, identity: str, sent_date: str, recipient: str, attachment: Path
     ) -> None:
-        record = next(r for r in self.records() if r["id"] == identity)
+        record = next((r for r in self.records() if r["id"] == identity), None)
+        if record is None:
+            raise ArchiveError("Unbekannte Beleg-ID")
         date.fromisoformat(sent_date)
         if record["direction"] != "Ausgang" or not recipient.strip():
             raise ArchiveError("Versand braucht Ausgangsrechnung und Empfänger")
@@ -646,7 +648,9 @@ class Register:
 
     def add_related(self, identity: str, source: Path, kind: str) -> dict:
         with storage.exclusive_lock(self.root):
-            record = next(r for r in self.records() if r["id"] == identity)
+            record = next((r for r in self.records() if r["id"] == identity), None)
+            if record is None:
+                raise ArchiveError("Unbekannte Beleg-ID")
             digest = storage.sha256(source)
             for item in record.get("related_files", []):
                 if item["sha256"] == digest and item["kind"] == kind:

@@ -43,6 +43,18 @@ Originalzeitstempel in Metadaten sind maßgeblich.
 Aufgetretene Fehler, manuelle Eingriffe sowie Ergebnisse von Sicherung, Prüfung
 und Export sind betrieblich zu dokumentieren. V1 enthält keine Archivlöschfunktion.
 
+## Abschlussschlüssel-Speicherung (technische Festlegung)
+
+Der Abschlussschlüssel (Ed25519) wird als PEM-Datei unverschlüsselt unter dem
+Archiveintrag abgelegt. Der Schutzmechanismus ist die NTFS-ACL des Archivordners:
+Nur das Dienstkonto und Administratoren erhalten Zugriff. Ein versiegeltes
+Jahresmedium wird ohne Abschlussschlüssel im klaren Betrieb fertiggestellt.
+
+Für Sicherung und Wiederherstellung des Abschlussschlüssels existiert ein
+verschlüsselter Export (Passwort), sodass die PEM-Datei selbst niemals im
+Klartext den Archivordner verlässt. Der Restore prüft die Schlüsselidentität,
+bevor bestehende A/B-Medien weiterverwendet werden.
+
 ## Ausgefüllte Fassung über den Assistenten erzeugen
 
 Die Anwendung bietet unter `Verfahrensdokumentation erstellen` einen Assistenten

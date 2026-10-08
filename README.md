@@ -39,7 +39,7 @@ Siehe `docs/SPECIFICATION.md` und `AGENTS.md` für die verbindlichen Anforderung
 ## V1.0 starten
 
 Das portable Windows-x64-Paket wird im [Windows-Build](https://github.com/Eulric90/Zugpferd-GoBD-Archiv/actions/workflows/windows.yml)
-als Artefakt `ZugpferdArchiv-1.0.0-Windows-x64` bereitgestellt. Das enthaltene ZIP
+als Artefakt `ZugpferdArchiv-<Version>-Windows-x64` bereitgestellt. Das enthaltene ZIP
 vollständig entpacken und `ZugpferdArchiv.exe` neben dem `_internal`-Ordner starten.
 Python muss auf dem Zielrechner nicht installiert sein.
 

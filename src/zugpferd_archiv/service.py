@@ -126,7 +126,9 @@ class Dispatcher:
         if operation == "mark_sent":
             identity, sent_date, recipient, digest = request["args"]
             register = Register(self.root, actor=actor)
-            record = next(r for r in register.records() if r["id"] == identity)
+            record = next((r for r in register.records() if r["id"] == identity), None)
+            if record is None:
+                raise ArchiveError("Unbekannte Beleg-ID")
             if digest != record["sha256"]:
                 raise ArchiveError(
                     "Versand-Anhang entspricht nicht archiviertem Original"
