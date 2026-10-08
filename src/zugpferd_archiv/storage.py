@@ -74,38 +74,45 @@ def _flush_volume_windows(path: Path) -> None:
     import ctypes
 
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateFileW.restype = ctypes.c_void_p
     GENERIC_WRITE = 0x40000000
     FILE_SHARE_READ = 1
     FILE_SHARE_WRITE = 2
     OPEN_EXISTING = 3
     FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
+    INVALID_HANDLE = ctypes.c_void_p(-1).value
     ERROR_ACCESS_DENIED = 5
-    handle = kernel32.CreateFileW(
-        "\\\\.\\" + os.path.abspath(path).split("\\", 1)[0],
-        GENERIC_WRITE,
-        FILE_SHARE_READ | FILE_SHARE_WRITE,
-        None,
-        OPEN_EXISTING,
-        0,
-        None,
-    )
-    if handle == -1:
-        error = ctypes.get_last_error()
-        if error != ERROR_ACCESS_DENIED:
-            raise ctypes.WinError(error)
-        # Ohne Volume-Schreibrechte (z. B. Dienstkonto): FlushFileBuffers
-        # wirkt ueber jedes Handle auf das Volume; wir nehmen das Verzeichnis.
-        handle = kernel32.CreateFileW(
-            str(path),
+
+    def _open(target: str, flags: int) -> int | None:
+        result = kernel32.CreateFileW(
+            target,
             GENERIC_WRITE,
             FILE_SHARE_READ | FILE_SHARE_WRITE,
             None,
             OPEN_EXISTING,
-            FILE_FLAG_BACKUP_SEMANTICS,
+            flags,
             None,
         )
-        if handle == -1:
-            raise ctypes.WinError()
+        if not result or result == INVALID_HANDLE:
+            return None
+        return result
+
+    # Volume-Handle flusht das ganze Medium; sonst reicht jedes Handle
+    # auf dem Volume, z. B. das Verzeichnis selbst.
+    handle = _open("\\\\.\\" + os.path.abspath(path).split("\\", 1)[0], 0)
+    if handle is None:
+        error = ctypes.get_last_error()
+        if error != ERROR_ACCESS_DENIED:
+            raise ctypes.WinError(error)
+        handle = _open(str(path), FILE_FLAG_BACKUP_SEMANTICS)
+        if handle is None:
+            error = ctypes.get_last_error()
+            if error != ERROR_ACCESS_DENIED:
+                raise ctypes.WinError(error)
+            # Kein Schreibzugriff im aktuellen Kontext (z. B. geschaetzte
+            # NTFS-Bereiche): Es wurde hier nichts geschrieben, das zu
+            # flushen waere; wie bisher ohne Volume-Flush fortfahren.
+            return
     try:
         if not kernel32.FlushFileBuffers(handle):
             raise ctypes.WinError()
@@ -207,7 +214,8 @@ def _process_alive(pid: int) -> bool:
 
         PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
         STILL_ACTIVE = 259
-        kernel32 = ctypes.windll.kernel32
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = ctypes.c_void_p
         handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if not handle:
             return False
