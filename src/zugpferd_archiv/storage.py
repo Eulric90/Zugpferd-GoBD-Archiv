@@ -73,11 +73,14 @@ def sha256(path: Path) -> str:
 def _flush_volume_windows(path: Path) -> None:
     import ctypes
 
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     GENERIC_WRITE = 0x40000000
     FILE_SHARE_READ = 1
     FILE_SHARE_WRITE = 2
     OPEN_EXISTING = 3
-    handle = ctypes.windll.kernel32.CreateFileW(
+    FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
+    ERROR_ACCESS_DENIED = 5
+    handle = kernel32.CreateFileW(
         "\\\\.\\" + os.path.abspath(path).split("\\", 1)[0],
         GENERIC_WRITE,
         FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -87,12 +90,27 @@ def _flush_volume_windows(path: Path) -> None:
         None,
     )
     if handle == -1:
-        raise ctypes.WinError()
+        error = ctypes.get_last_error()
+        if error != ERROR_ACCESS_DENIED:
+            raise ctypes.WinError(error)
+        # Ohne Volume-Schreibrechte (z. B. Dienstkonto): FlushFileBuffers
+        # wirkt ueber jedes Handle auf das Volume; wir nehmen das Verzeichnis.
+        handle = kernel32.CreateFileW(
+            str(path),
+            GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            None,
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS,
+            None,
+        )
+        if handle == -1:
+            raise ctypes.WinError()
     try:
-        if not ctypes.windll.kernel32.FlushFileBuffers(handle):
+        if not kernel32.FlushFileBuffers(handle):
             raise ctypes.WinError()
     finally:
-        ctypes.windll.kernel32.CloseHandle(handle)
+        kernel32.CloseHandle(handle)
 
 
 def sync_directory(path: Path) -> None:
