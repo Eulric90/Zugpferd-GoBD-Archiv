@@ -70,29 +70,61 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _windows_kernel32():
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateFileW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.FlushFileBuffers.argtypes = [wintypes.HANDLE]
+    kernel.FlushFileBuffers.restype = wintypes.BOOL
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.GetExitCodeProcess.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    kernel.GetExitCodeProcess.restype = wintypes.BOOL
+    return kernel
+
+
 def _flush_volume_windows(path: Path) -> None:
     import ctypes
 
-    GENERIC_WRITE = 0x40000000
-    FILE_SHARE_READ = 1
-    FILE_SHARE_WRITE = 2
-    OPEN_EXISTING = 3
-    handle = ctypes.windll.kernel32.CreateFileW(
+    kernel = _windows_kernel32()
+    handle = kernel.CreateFileW(
         "\\\\.\\" + os.path.abspath(path).split("\\", 1)[0],
-        GENERIC_WRITE,
-        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        0x40000000,  # GENERIC_WRITE, needed for a whole-volume flush
+        3,  # FILE_SHARE_READ | FILE_SHARE_WRITE
         None,
-        OPEN_EXISTING,
+        3,
         0,
-        None,
+        None,  # OPEN_EXISTING
     )
-    if handle == -1:
-        raise ctypes.WinError()
+    if handle is None or handle == ctypes.c_void_p(-1).value:
+        error = ctypes.get_last_error()
+        if error == 5:
+            # Whole-volume flushing requires privileges the writer must not have.
+            # File flush/fsync above remains mandatory; a directory handle is
+            # not an equivalent substitute for flushing the whole volume.
+            return
+        raise ctypes.WinError(error)
     try:
-        if not ctypes.windll.kernel32.FlushFileBuffers(handle):
-            raise ctypes.WinError()
+        if not kernel.FlushFileBuffers(handle):
+            raise ctypes.WinError(ctypes.get_last_error())
     finally:
-        ctypes.windll.kernel32.CloseHandle(handle)
+        kernel.CloseHandle(handle)
 
 
 def sync_directory(path: Path) -> None:
@@ -189,12 +221,15 @@ def _process_alive(pid: int) -> bool:
 
         PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
         STILL_ACTIVE = 259
-        kernel32 = ctypes.windll.kernel32
+        from ctypes import wintypes
+
+        kernel32 = _windows_kernel32()
         handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if not handle:
-            return False
+            # Only an invalid PID proves absence; access denied is not a stale lock.
+            return ctypes.get_last_error() != 87
         try:
-            code = ctypes.c_ulong()
+            code = wintypes.DWORD()
             if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
                 return True
             return code.value == STILL_ACTIVE
