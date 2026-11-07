@@ -88,3 +88,19 @@ Originaländerung/-löschung, Schlüsselzugriff und Schlüssel-API müssen verwe
 Nummernreservierung und protokollierte tatsächliche SID müssen funktionieren.
 Testkonto, Testdienst und Testbestand werden anschließend entfernt. Ein bestehender
 Dienst/eine bestehende Konfiguration verhindern diesen Test.
+
+## Windows-Flush unter dem eingeschränkten Schreibdienst
+
+Jeder Dateiinhalt wird weiterhin zwingend mit `flush`/`os.fsync` geschrieben;
+Kopien werden anschließend vom Zielmedium zurückgelesen und per SHA-256 geprüft.
+Der zusätzliche Flush des gesamten Windows-Volumes benötigt weitergehende Rechte.
+Wenn ausschließlich das Öffnen dieses Volume-Handles mit `ERROR_ACCESS_DENIED`
+scheitert, läuft der Dienst mit den verpflichtenden Datei-Prüfungen weiter, ohne
+Administratorrechte anzufordern. Ein Verzeichnis-Handle ist kein gleichwertiger
+Volume-Flush. Andere Öffnungsfehler, Fehler eines tatsächlich gestarteten Flushes
+und Datei-fsync-Fehler bleiben harte Fehler. Dies ist keine Zusage über das
+Verhalten von Hardware-Schreibcaches bei einem Stromausfall.
+
+Windows-Handles werden als pointerbreite HANDLEs deklariert. Eine verweigerte
+Prozessabfrage ist kein Beleg für eine verwaiste Sperre; nur ein nachweislich
+nicht existierender Prozess darf als beendet behandelt werden.
